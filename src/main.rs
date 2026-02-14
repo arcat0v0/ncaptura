@@ -19,6 +19,24 @@ const WINDOW_WIDTH: i32 = 360;
 const WINDOW_HEIGHT: i32 = 460;
 const WINDOW_MARGIN: i32 = 18;
 
+const WINDOW_CSS: &str = r#"
+window.ncaptura-window {
+  border-radius: 12px;
+  background-color: @window_bg_color;
+  box-shadow: 0 10px 26px alpha(@window_fg_color, 0.22);
+}
+
+window.ncaptura-window > box {
+  border-radius: 12px;
+  background-color: @window_bg_color;
+}
+
+window.ncaptura-window headerbar {
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+}
+"#;
+
 #[derive(Default)]
 struct RecordingUiState {
     session: Option<RecordingSession>,
@@ -185,10 +203,30 @@ fn build_ui(app: &Application) {
         .default_height(WINDOW_HEIGHT)
         .resizable(false)
         .build();
+    window.set_size_request(WINDOW_WIDTH, WINDOW_HEIGHT);
 
     configure_window_placement(&window);
+    apply_window_style(&window);
 
     let header_bar = HeaderBar::new();
+    header_bar.set_show_title_buttons(true);
+    let title_label = Label::new(Some("NCaptura"));
+    title_label.add_css_class("title-4");
+    header_bar.set_title_widget(Some(&title_label));
+
+    let close_button = Button::builder()
+        .icon_name("window-close-symbolic")
+        .tooltip_text("关闭")
+        .build();
+    close_button.add_css_class("flat");
+    {
+        let window = window.clone();
+        close_button.connect_clicked(move |_| {
+            window.close();
+        });
+    }
+    header_bar.pack_end(&close_button);
+
     window.set_titlebar(Some(&header_bar));
 
     let content_box = GtkBox::new(Orientation::Vertical, 24);
@@ -212,8 +250,25 @@ fn build_ui(app: &Application) {
     screenshot_actions.append(&screenshot_region_btn);
     screenshot_actions.append(&screenshot_full_btn);
 
+    let screenshot_copy_row = GtkBox::new(Orientation::Horizontal, 8);
+    screenshot_copy_row.set_halign(Align::Center);
+
+    let screenshot_copy_toggle = ToggleButton::builder()
+        .icon_name("edit-copy-symbolic")
+        .tooltip_text("截图后复制到剪贴板")
+        .build();
+    screenshot_copy_toggle.add_css_class("circular");
+
+    let screenshot_copy_label = Label::new(Some("截图后复制"));
+    screenshot_copy_label.add_css_class("caption");
+    screenshot_copy_label.add_css_class("dim-label");
+
+    screenshot_copy_row.append(&screenshot_copy_toggle);
+    screenshot_copy_row.append(&screenshot_copy_label);
+
     screenshot_box.append(&screenshot_label);
     screenshot_box.append(&screenshot_actions);
+    screenshot_box.append(&screenshot_copy_row);
 
     let recording_box = GtkBox::new(Orientation::Vertical, 12);
     let recording_label = Label::new(Some("录屏"));
@@ -265,6 +320,7 @@ fn build_ui(app: &Application) {
     status_label.add_css_class("dim-label");
     status_label.set_ellipsize(gtk::pango::EllipsizeMode::End);
     status_label.set_width_chars(20);
+    status_label.set_width_request(220);
     status_label.set_xalign(0.5);
 
     status_row.append(&status_spinner);
@@ -280,17 +336,21 @@ fn build_ui(app: &Application) {
     {
         let status_label = status_label.clone();
         let status_spinner = status_spinner.clone();
+        let screenshot_copy_toggle = screenshot_copy_toggle.clone();
         screenshot_region_btn.connect_clicked(move |_| {
             status_spinner.stop();
             status_spinner.set_visible(false);
             status_label.remove_css_class("dim-label");
 
-            match capture::take_screenshot(CaptureTarget::Region) {
+            let copy_to_clipboard = screenshot_copy_toggle.is_active();
+            match capture::take_screenshot_with_clipboard(CaptureTarget::Region, copy_to_clipboard)
+            {
                 Ok(path) => status_label.set_text(&format!(
-                    "已保存: {}",
-                    path.file_name().unwrap_or_default().to_string_lossy()
+                    "已保存{}: {}",
+                    if copy_to_clipboard { "并复制" } else { "" },
+                    path.file_name().unwrap_or_default().to_string_lossy(),
                 )),
-                Err(_err) => status_label.set_text("截图失败"),
+                Err(err) => status_label.set_text(&format!("截图失败: {err}")),
             }
         });
     }
@@ -298,17 +358,23 @@ fn build_ui(app: &Application) {
     {
         let status_label = status_label.clone();
         let status_spinner = status_spinner.clone();
+        let screenshot_copy_toggle = screenshot_copy_toggle.clone();
         screenshot_full_btn.connect_clicked(move |_| {
             status_spinner.stop();
             status_spinner.set_visible(false);
             status_label.remove_css_class("dim-label");
 
-            match capture::take_screenshot(CaptureTarget::Fullscreen) {
+            let copy_to_clipboard = screenshot_copy_toggle.is_active();
+            match capture::take_screenshot_with_clipboard(
+                CaptureTarget::Fullscreen,
+                copy_to_clipboard,
+            ) {
                 Ok(path) => status_label.set_text(&format!(
-                    "已保存: {}",
-                    path.file_name().unwrap_or_default().to_string_lossy()
+                    "已保存{}: {}",
+                    if copy_to_clipboard { "并复制" } else { "" },
+                    path.file_name().unwrap_or_default().to_string_lossy(),
                 )),
-                Err(_err) => status_label.set_text("截图失败"),
+                Err(err) => status_label.set_text(&format!("截图失败: {err}")),
             }
         });
     }
@@ -405,6 +471,22 @@ fn build_icon_button(icon_name: &str, tooltip: &str) -> Button {
     button.set_width_request(48);
     button.set_height_request(48);
     button
+}
+
+fn apply_window_style(window: &ApplicationWindow) {
+    let css_provider = gtk::CssProvider::new();
+    css_provider.load_from_data(WINDOW_CSS);
+
+    if let Some(display) = gdk::Display::default() {
+        gtk::style_context_add_provider_for_display(
+            &display,
+            &css_provider,
+            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+        );
+    }
+
+    window.add_css_class("ncaptura-window");
+    window.add_css_class("csd");
 }
 
 fn configure_window_placement(window: &ApplicationWindow) {

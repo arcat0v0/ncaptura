@@ -1,6 +1,8 @@
 use std::fs;
+use std::fs::File;
+use std::io;
 use std::path::PathBuf;
-use std::process::{Child, Command};
+use std::process::{Child, Command, Stdio};
 
 use anyhow::{Context, Result, bail};
 use chrono::Local;
@@ -23,6 +25,13 @@ pub struct RecordingSession {
 const CLI_RECORDING_STATE_FILE: &str = "recording.json";
 
 pub fn take_screenshot(target: CaptureTarget) -> Result<PathBuf> {
+    take_screenshot_with_clipboard(target, false)
+}
+
+pub fn take_screenshot_with_clipboard(
+    target: CaptureTarget,
+    copy_to_clipboard: bool,
+) -> Result<PathBuf> {
     let output_path = build_output_path(
         "screenshots",
         &format!("screenshot-{}", target.slug()),
@@ -44,6 +53,11 @@ pub fn take_screenshot(target: CaptureTarget) -> Result<PathBuf> {
 
     command.arg(&output_path);
     run_command(command, "截图失败")?;
+
+    if copy_to_clipboard {
+        copy_image_to_clipboard(&output_path)?;
+    }
+
     Ok(output_path)
 }
 
@@ -271,6 +285,29 @@ fn default_system_mix_audio_device() -> Option<String> {
     }
 
     Some(format!("{sink_name}.monitor"))
+}
+
+fn copy_image_to_clipboard(path: &PathBuf) -> Result<()> {
+    let mut child = Command::new("wl-copy")
+        .arg("--type")
+        .arg("image/png")
+        .stdin(Stdio::piped())
+        .spawn()
+        .context("无法启动 wl-copy，请确认已安装")?;
+
+    let mut child_stdin = child.stdin.take().context("无法写入 wl-copy 输入流")?;
+    let mut image_file =
+        File::open(path).with_context(|| format!("无法读取截图文件: {}", path.display()))?;
+
+    io::copy(&mut image_file, &mut child_stdin).context("写入剪贴板数据失败")?;
+    drop(child_stdin);
+
+    let status = child.wait().context("等待 wl-copy 结束失败")?;
+    if !status.success() {
+        bail!("截图已保存，但复制到剪贴板失败");
+    }
+
+    Ok(())
 }
 
 fn write_cli_recording_state(pid: u32, output_path: &PathBuf) -> Result<()> {
