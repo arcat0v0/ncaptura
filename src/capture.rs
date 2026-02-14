@@ -204,7 +204,7 @@ fn pick_region_geometry() -> Result<String> {
     Ok(geometry)
 }
 
-fn focused_output_name() -> Result<String> {
+pub fn focused_output_name() -> Result<String> {
     let output = Command::new("niri")
         .args(["msg", "--json", "focused-output"])
         .output()

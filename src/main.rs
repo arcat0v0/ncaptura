@@ -3,14 +3,30 @@ mod capture;
 use std::cell::RefCell;
 use std::env;
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
+use gtk::gdk;
 use gtk::prelude::*;
 use gtk::{
-    Align, Application, ApplicationWindow, Box as GtkBox, Button, CheckButton, HeaderBar, Label,
-    Orientation,
+    Align, Application, ApplicationWindow, Box as GtkBox, Button, HeaderBar, Label, Orientation,
+    Spinner, ToggleButton,
 };
+use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 
 use crate::capture::{CaptureTarget, RecordingSession};
+
+const WINDOW_WIDTH: i32 = 360;
+const WINDOW_HEIGHT: i32 = 460;
+const WINDOW_MARGIN: i32 = 18;
+
+#[derive(Default)]
+struct RecordingUiState {
+    session: Option<RecordingSession>,
+    started_at: Option<Instant>,
+    target: Option<CaptureTarget>,
+    with_audio: bool,
+    ticker: Option<gtk::glib::SourceId>,
+}
 
 fn main() {
     if let Err(code) = handle_cli_if_requested() {
@@ -158,22 +174,19 @@ niri 快捷键示例:
   Mod+Shift+E    { spawn \"ncaptura\" \"record\" \"stop\"; }"
 }
 
-enum CliCommand {
-    Screenshot { target: CaptureTarget },
-    RecordStart { target: CaptureTarget, audio: bool },
-    RecordStop,
-    Help,
-}
-
 fn build_ui(app: &Application) {
-    let recording_state: Rc<RefCell<Option<RecordingSession>>> = Rc::new(RefCell::new(None));
+    let recording_state: Rc<RefCell<RecordingUiState>> =
+        Rc::new(RefCell::new(RecordingUiState::default()));
 
     let window = ApplicationWindow::builder()
         .application(app)
         .title("NCaptura")
-        .default_width(360)
-        .default_height(420)
+        .default_width(WINDOW_WIDTH)
+        .default_height(WINDOW_HEIGHT)
+        .resizable(false)
         .build();
+
+    configure_window_placement(&window);
 
     let header_bar = HeaderBar::new();
     window.set_titlebar(Some(&header_bar));
@@ -183,147 +196,187 @@ fn build_ui(app: &Application) {
     content_box.set_margin_bottom(24);
     content_box.set_margin_start(24);
     content_box.set_margin_end(24);
-    content_box.set_valign(Align::Start);
+    content_box.set_valign(Align::Center);
 
     let screenshot_box = GtkBox::new(Orientation::Vertical, 12);
+    let screenshot_label = Label::new(Some("截图"));
+    screenshot_label.add_css_class("title-4");
+    screenshot_label.set_opacity(0.8);
 
-    let screenshot_label = Label::builder()
-        .label("<b>截图</b>")
-        .use_markup(true)
-        .halign(Align::Start)
-        .build();
+    let screenshot_actions = GtkBox::new(Orientation::Horizontal, 16);
+    screenshot_actions.set_halign(Align::Center);
+
+    let screenshot_region_btn = build_icon_button("crop-symbolic", "区域截图");
+    let screenshot_full_btn = build_icon_button("view-fullscreen-symbolic", "全屏截图");
+
+    screenshot_actions.append(&screenshot_region_btn);
+    screenshot_actions.append(&screenshot_full_btn);
+
     screenshot_box.append(&screenshot_label);
-
-    let screenshot_buttons_box = GtkBox::new(Orientation::Horizontal, 12);
-    screenshot_buttons_box.add_css_class("linked");
-    screenshot_buttons_box.set_halign(Align::Fill);
-
-    let screenshot_region_btn = Button::builder().label("区域截图").hexpand(true).build();
-    let screenshot_full_btn = Button::builder().label("全屏截图").hexpand(true).build();
-
-    screenshot_buttons_box.append(&screenshot_region_btn);
-    screenshot_buttons_box.append(&screenshot_full_btn);
-    screenshot_box.append(&screenshot_buttons_box);
-
-    content_box.append(&screenshot_box);
+    screenshot_box.append(&screenshot_actions);
 
     let recording_box = GtkBox::new(Orientation::Vertical, 12);
+    let recording_label = Label::new(Some("录屏"));
+    recording_label.add_css_class("title-4");
+    recording_label.set_opacity(0.8);
 
-    let recording_label = Label::builder()
-        .label("<b>录屏</b>")
-        .use_markup(true)
-        .halign(Align::Start)
-        .build();
-    recording_box.append(&recording_label);
+    let recording_actions = GtkBox::new(Orientation::Horizontal, 16);
+    recording_actions.set_halign(Align::Center);
 
-    let audio_checkbox = CheckButton::with_label("包含音频（系统混音）");
-    recording_box.append(&audio_checkbox);
-
-    let recording_buttons_box = GtkBox::new(Orientation::Horizontal, 12);
-    recording_buttons_box.add_css_class("linked");
-
-    let recording_region_btn = Button::builder().label("区域录屏").hexpand(true).build();
+    let recording_region_btn = build_icon_button("media-record-symbolic", "区域录屏");
     recording_region_btn.add_css_class("suggested-action");
 
-    let recording_full_btn = Button::builder().label("全屏录屏").hexpand(true).build();
+    let recording_full_btn = build_icon_button("video-x-generic-symbolic", "全屏录屏");
     recording_full_btn.add_css_class("suggested-action");
 
-    recording_buttons_box.append(&recording_region_btn);
-    recording_buttons_box.append(&recording_full_btn);
-    recording_box.append(&recording_buttons_box);
+    recording_actions.append(&recording_region_btn);
+    recording_actions.append(&recording_full_btn);
 
-    let stop_recording_btn = Button::builder().label("停止录屏").sensitive(false).build();
-    stop_recording_btn.add_css_class("destructive-action");
-    recording_box.append(&stop_recording_btn);
-
-    content_box.append(&recording_box);
-
-    let status_label = Label::builder()
-        .label("就绪")
+    let audio_toggle = ToggleButton::builder()
+        .icon_name("audio-input-microphone-symbolic")
+        .tooltip_text("录制系统音频")
         .halign(Align::Center)
-        .css_classes(vec!["dim-label"])
         .build();
+    audio_toggle.add_css_class("circular");
 
-    content_box.append(&status_label);
+    let recording_controls = GtkBox::new(Orientation::Vertical, 12);
+    recording_controls.append(&recording_actions);
+    recording_controls.append(&audio_toggle);
+
+    recording_box.append(&recording_label);
+    recording_box.append(&recording_controls);
+
+    let stop_recording_btn = Button::builder()
+        .label("停止录屏")
+        .icon_name("media-playback-stop-symbolic")
+        .sensitive(false)
+        .halign(Align::Center)
+        .build();
+    stop_recording_btn.add_css_class("destructive-action");
+    stop_recording_btn.add_css_class("pill");
+
+    let status_row = GtkBox::new(Orientation::Horizontal, 8);
+    status_row.set_halign(Align::Center);
+
+    let status_spinner = Spinner::new();
+    status_spinner.set_visible(false);
+
+    let status_label = Label::new(Some("就绪"));
+    status_label.add_css_class("dim-label");
+    status_label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    status_label.set_width_chars(20);
+    status_label.set_xalign(0.5);
+
+    status_row.append(&status_spinner);
+    status_row.append(&status_label);
+
+    content_box.append(&screenshot_box);
+    content_box.append(&recording_box);
+    content_box.append(&stop_recording_btn);
+    content_box.append(&status_row);
 
     window.set_child(Some(&content_box));
 
     {
         let status_label = status_label.clone();
+        let status_spinner = status_spinner.clone();
         screenshot_region_btn.connect_clicked(move |_| {
+            status_spinner.stop();
+            status_spinner.set_visible(false);
+            status_label.remove_css_class("dim-label");
+
             match capture::take_screenshot(CaptureTarget::Region) {
-                Ok(path) => status_label.set_text(&format!("区域截图成功: {}", path.display())),
-                Err(err) => status_label.set_text(&format!("区域截图失败: {err}")),
+                Ok(path) => status_label.set_text(&format!(
+                    "已保存: {}",
+                    path.file_name().unwrap_or_default().to_string_lossy()
+                )),
+                Err(_err) => status_label.set_text("截图失败"),
             }
         });
     }
 
     {
         let status_label = status_label.clone();
+        let status_spinner = status_spinner.clone();
         screenshot_full_btn.connect_clicked(move |_| {
+            status_spinner.stop();
+            status_spinner.set_visible(false);
+            status_label.remove_css_class("dim-label");
+
             match capture::take_screenshot(CaptureTarget::Fullscreen) {
-                Ok(path) => status_label.set_text(&format!("全屏截图成功: {}", path.display())),
-                Err(err) => status_label.set_text(&format!("全屏截图失败: {err}")),
+                Ok(path) => status_label.set_text(&format!(
+                    "已保存: {}",
+                    path.file_name().unwrap_or_default().to_string_lossy()
+                )),
+                Err(_err) => status_label.set_text("截图失败"),
             }
         });
     }
 
     {
         let recording_state = recording_state.clone();
-        let audio_checkbox = audio_checkbox.clone();
+        let audio_toggle = audio_toggle.clone();
         let status_label = status_label.clone();
-        let recording_region_btn_ref = recording_region_btn.clone();
-        let recording_full_btn_ref = recording_full_btn.clone();
-        let stop_recording_btn_ref = stop_recording_btn.clone();
+        let status_spinner = status_spinner.clone();
+        let rec_region_btn = recording_region_btn.clone();
+        let rec_full_btn = recording_full_btn.clone();
+        let stop_btn = stop_recording_btn.clone();
 
         recording_region_btn.connect_clicked(move |_| {
             start_recording(
                 CaptureTarget::Region,
                 &recording_state,
-                &audio_checkbox,
+                &audio_toggle,
                 &status_label,
-                &recording_region_btn_ref,
-                &recording_full_btn_ref,
-                &stop_recording_btn_ref,
+                &status_spinner,
+                &rec_region_btn,
+                &rec_full_btn,
+                &stop_btn,
             );
         });
     }
 
     {
         let recording_state = recording_state.clone();
-        let audio_checkbox = audio_checkbox.clone();
+        let audio_toggle = audio_toggle.clone();
         let status_label = status_label.clone();
-        let recording_region_btn_ref = recording_region_btn.clone();
-        let recording_full_btn_ref = recording_full_btn.clone();
-        let stop_recording_btn_ref = stop_recording_btn.clone();
+        let status_spinner = status_spinner.clone();
+        let rec_region_btn = recording_region_btn.clone();
+        let rec_full_btn = recording_full_btn.clone();
+        let stop_btn = stop_recording_btn.clone();
 
         recording_full_btn.connect_clicked(move |_| {
             start_recording(
                 CaptureTarget::Fullscreen,
                 &recording_state,
-                &audio_checkbox,
+                &audio_toggle,
                 &status_label,
-                &recording_region_btn_ref,
-                &recording_full_btn_ref,
-                &stop_recording_btn_ref,
+                &status_spinner,
+                &rec_region_btn,
+                &rec_full_btn,
+                &stop_btn,
             );
         });
     }
 
     {
         let recording_state = recording_state.clone();
+        let audio_toggle = audio_toggle.clone();
         let status_label = status_label.clone();
-        let recording_region_btn_ref = recording_region_btn.clone();
-        let recording_full_btn_ref = recording_full_btn.clone();
-        let stop_recording_btn_ref = stop_recording_btn.clone();
+        let status_spinner = status_spinner.clone();
+        let rec_region_btn = recording_region_btn.clone();
+        let rec_full_btn = recording_full_btn.clone();
+        let stop_btn = stop_recording_btn.clone();
 
         stop_recording_btn.connect_clicked(move |_| {
             stop_recording(
                 &recording_state,
+                &audio_toggle,
                 &status_label,
-                &recording_region_btn_ref,
-                &recording_full_btn_ref,
-                &stop_recording_btn_ref,
+                &status_spinner,
+                &rec_region_btn,
+                &rec_full_btn,
+                &stop_btn,
             );
         });
     }
@@ -331,9 +384,11 @@ fn build_ui(app: &Application) {
     {
         let recording_state = recording_state.clone();
         window.connect_close_request(move |_| {
-            if let Some(session) = recording_state.borrow_mut().take() {
+            clear_recording_ticker(&recording_state);
+            if let Some(session) = recording_state.borrow_mut().session.take() {
                 let _ = capture::stop_recording(session);
             }
+
             gtk::glib::Propagation::Proceed
         });
     }
@@ -341,71 +396,215 @@ fn build_ui(app: &Application) {
     window.present();
 }
 
-fn start_recording(
-    target: CaptureTarget,
-    recording_state: &Rc<RefCell<Option<RecordingSession>>>,
-    audio_checkbox: &CheckButton,
-    status_label: &Label,
-    recording_region_btn: &Button,
-    recording_full_btn: &Button,
-    stop_recording_btn: &Button,
-) {
-    if recording_state.borrow().is_some() {
-        status_label.set_text("已有录屏正在进行，请先停止当前录屏");
+fn build_icon_button(icon_name: &str, tooltip: &str) -> Button {
+    let button = Button::builder()
+        .icon_name(icon_name)
+        .tooltip_text(tooltip)
+        .build();
+    button.add_css_class("circular");
+    button.set_width_request(48);
+    button.set_height_request(48);
+    button
+}
+
+fn configure_window_placement(window: &ApplicationWindow) {
+    if !gtk4_layer_shell::is_supported() {
         return;
     }
 
-    let with_audio = audio_checkbox.is_active();
+    window.init_layer_shell();
+    window.set_layer(Layer::Top);
+    window.set_anchor(Edge::Top, true);
+    window.set_anchor(Edge::Right, true);
+    window.set_margin(Edge::Top, WINDOW_MARGIN);
+    window.set_margin(Edge::Right, WINDOW_MARGIN);
+    window.set_keyboard_mode(KeyboardMode::OnDemand);
+    window.set_namespace(Some("ncaptura"));
 
+    if let Some(display) = gdk::Display::default()
+        && let Some(monitor) = focused_monitor_from_niri(&display)
+    {
+        window.set_monitor(Some(&monitor));
+    }
+}
+
+fn focused_monitor_from_niri(display: &gdk::Display) -> Option<gdk::Monitor> {
+    let focused_output = capture::focused_output_name().ok()?;
+    let monitors = display.monitors();
+
+    for index in 0..monitors.n_items() {
+        let Some(item) = monitors.item(index) else {
+            continue;
+        };
+
+        let Ok(monitor) = item.downcast::<gdk::Monitor>() else {
+            continue;
+        };
+
+        if monitor.connector().as_deref() == Some(focused_output.as_str()) {
+            return Some(monitor);
+        }
+    }
+
+    None
+}
+
+fn start_recording(
+    target: CaptureTarget,
+    recording_state: &Rc<RefCell<RecordingUiState>>,
+    audio_toggle: &ToggleButton,
+    status_label: &Label,
+    status_spinner: &Spinner,
+    rec_region_btn: &Button,
+    rec_full_btn: &Button,
+    stop_btn: &Button,
+) {
+    if recording_state.borrow().session.is_some() {
+        status_label.set_text("已有录屏在进行中");
+        return;
+    }
+
+    let with_audio = audio_toggle.is_active();
     match capture::start_recording(target, with_audio) {
         Ok(session) => {
-            *recording_state.borrow_mut() = Some(session);
-            recording_region_btn.set_sensitive(false);
-            recording_full_btn.set_sensitive(false);
-            stop_recording_btn.set_sensitive(true);
-            status_label.set_text(&format!(
-                "已开始{}录屏{}",
-                target_label(target),
-                if with_audio { "（含音频）" } else { "" }
-            ));
+            {
+                let mut state = recording_state.borrow_mut();
+                state.session = Some(session);
+                state.started_at = Some(Instant::now());
+                state.target = Some(target);
+                state.with_audio = with_audio;
+            }
+
+            set_recording_controls(true, audio_toggle, rec_region_btn, rec_full_btn, stop_btn);
+
+            status_label.remove_css_class("dim-label");
+            status_label.set_text(&format_recording_status(0));
+            status_spinner.set_visible(true);
+            status_spinner.start();
+
+            start_recording_ticker(recording_state, status_label, status_spinner);
         }
-        Err(err) => {
-            status_label.set_text(&format!("开始录屏失败: {err}"));
+        Err(_err) => {
+            status_spinner.stop();
+            status_spinner.set_visible(false);
+            status_label.remove_css_class("dim-label");
+            status_label.set_text("开始录屏失败");
         }
     }
 }
 
 fn stop_recording(
-    recording_state: &Rc<RefCell<Option<RecordingSession>>>,
+    recording_state: &Rc<RefCell<RecordingUiState>>,
+    audio_toggle: &ToggleButton,
     status_label: &Label,
-    recording_region_btn: &Button,
-    recording_full_btn: &Button,
-    stop_recording_btn: &Button,
+    status_spinner: &Spinner,
+    rec_region_btn: &Button,
+    rec_full_btn: &Button,
+    stop_btn: &Button,
 ) {
-    let session = recording_state.borrow_mut().take();
-
+    let session = recording_state.borrow_mut().session.take();
     let Some(session) = session else {
         status_label.set_text("当前没有正在进行的录屏");
         return;
     };
 
+    clear_recording_ticker(recording_state);
+
+    {
+        let mut state = recording_state.borrow_mut();
+        state.started_at = None;
+        state.target = None;
+        state.with_audio = false;
+    }
+
     match capture::stop_recording(session) {
-        Ok(path) => {
-            status_label.set_text(&format!("录屏已保存: {}", path.display()));
+        Ok(_path) => {
+            status_spinner.stop();
+            status_spinner.set_visible(false);
+            status_label.remove_css_class("dim-label");
+            status_label.set_text("录屏已保存");
         }
-        Err(err) => {
-            status_label.set_text(&format!("停止录屏失败: {err}"));
+        Err(_err) => {
+            status_spinner.stop();
+            status_spinner.set_visible(false);
+            status_label.remove_css_class("dim-label");
+            status_label.set_text("停止录屏失败");
         }
     }
 
-    recording_region_btn.set_sensitive(true);
-    recording_full_btn.set_sensitive(true);
-    stop_recording_btn.set_sensitive(false);
+    set_recording_controls(false, audio_toggle, rec_region_btn, rec_full_btn, stop_btn);
 }
 
-fn target_label(target: CaptureTarget) -> &'static str {
-    match target {
-        CaptureTarget::Region => "区域",
-        CaptureTarget::Fullscreen => "全屏",
+fn set_recording_controls(
+    is_recording: bool,
+    audio_toggle: &ToggleButton,
+    rec_region_btn: &Button,
+    rec_full_btn: &Button,
+    stop_btn: &Button,
+) {
+    rec_region_btn.set_sensitive(!is_recording);
+    rec_full_btn.set_sensitive(!is_recording);
+    audio_toggle.set_sensitive(!is_recording);
+    stop_btn.set_sensitive(is_recording);
+}
+
+fn start_recording_ticker(
+    recording_state: &Rc<RefCell<RecordingUiState>>,
+    status_label: &Label,
+    status_spinner: &Spinner,
+) {
+    clear_recording_ticker(recording_state);
+
+    let recording_state = recording_state.clone();
+    let ticker_state = recording_state.clone();
+    let status_label = status_label.clone();
+    let status_spinner = status_spinner.clone();
+
+    let source_id = gtk::glib::timeout_add_local(Duration::from_secs(1), move || {
+        let (recording_active, started_at) = {
+            let state = ticker_state.borrow();
+            (state.session.is_some(), state.started_at)
+        };
+
+        if !recording_active {
+            status_spinner.stop();
+            status_spinner.set_visible(false);
+            return gtk::glib::ControlFlow::Break;
+        }
+
+        let Some(started_at) = started_at else {
+            return gtk::glib::ControlFlow::Continue;
+        };
+
+        let elapsed_seconds = started_at.elapsed().as_secs();
+        status_spinner.set_visible(true);
+        status_spinner.start();
+        status_label.remove_css_class("dim-label");
+        status_label.set_text(&format_recording_status(elapsed_seconds));
+
+        gtk::glib::ControlFlow::Continue
+    });
+
+    recording_state.borrow_mut().ticker = Some(source_id);
+}
+
+fn clear_recording_ticker(recording_state: &Rc<RefCell<RecordingUiState>>) {
+    if let Some(source_id) = recording_state.borrow_mut().ticker.take() {
+        source_id.remove();
     }
+}
+
+fn format_recording_status(elapsed_seconds: u64) -> String {
+    let hours = elapsed_seconds / 3600;
+    let minutes = (elapsed_seconds % 3600) / 60;
+    let seconds = elapsed_seconds % 60;
+
+    format!("{}:{:02}:{:02}", hours, minutes, seconds,)
+}
+
+enum CliCommand {
+    Screenshot { target: CaptureTarget },
+    RecordStart { target: CaptureTarget, audio: bool },
+    RecordStop,
+    Help,
 }
