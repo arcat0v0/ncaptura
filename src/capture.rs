@@ -20,6 +20,8 @@ pub struct RecordingSession {
     output_path: PathBuf,
 }
 
+const CLI_RECORDING_STATE_FILE: &str = "recording.json";
+
 pub fn take_screenshot(target: CaptureTarget) -> Result<PathBuf> {
     let output_path = build_output_path(
         "screenshots",
@@ -101,6 +103,59 @@ pub fn stop_recording(mut session: RecordingSession) -> Result<PathBuf> {
     }
 
     Ok(session.output_path)
+}
+
+pub fn start_recording_detached(target: CaptureTarget, with_audio: bool) -> Result<PathBuf> {
+    if read_cli_recording_state().is_ok() {
+        bail!("已有通过 CLI 启动的录屏在进行中，请先停止");
+    }
+
+    let output_path =
+        build_output_path("recordings", &format!("recording-{}", target.slug()), "mkv")?;
+    let mut command = Command::new("wf-recorder");
+
+    match target {
+        CaptureTarget::Region => {
+            let geometry = pick_region_geometry()?;
+            command.args(["-g", &geometry]);
+        }
+        CaptureTarget::Fullscreen => {
+            if let Ok(output_name) = focused_output_name() {
+                command.args(["-o", &output_name]);
+            }
+        }
+    }
+
+    if with_audio {
+        if let Some(audio_device) = default_system_mix_audio_device() {
+            command.arg(format!("--audio={audio_device}"));
+        } else {
+            command.arg("--audio");
+        }
+    }
+
+    command.arg("-f").arg(&output_path);
+
+    let child = command
+        .spawn()
+        .context("无法启动 wf-recorder，请确认已安装并在 PATH 中")?;
+
+    write_cli_recording_state(child.id(), &output_path)?;
+    Ok(output_path)
+}
+
+pub fn stop_recording_detached() -> Result<PathBuf> {
+    let (pid, output_path) = read_cli_recording_state()?;
+    let process_id = Pid::from_raw(pid as i32);
+
+    if let Err(err) = kill(process_id, Signal::SIGINT)
+        && err != Errno::ESRCH
+    {
+        bail!("发送停止信号失败: {err}");
+    }
+
+    clear_cli_recording_state();
+    Ok(output_path)
 }
 
 impl CaptureTarget {
@@ -216,4 +271,58 @@ fn default_system_mix_audio_device() -> Option<String> {
     }
 
     Some(format!("{sink_name}.monitor"))
+}
+
+fn write_cli_recording_state(pid: u32, output_path: &PathBuf) -> Result<()> {
+    let state_dir = cli_state_dir()?;
+    fs::create_dir_all(&state_dir)
+        .with_context(|| format!("无法创建状态目录: {}", state_dir.display()))?;
+
+    let file_path = state_dir.join(CLI_RECORDING_STATE_FILE);
+    let data = serde_json::json!({
+        "pid": pid,
+        "output_path": output_path,
+    });
+
+    fs::write(&file_path, data.to_string())
+        .with_context(|| format!("无法写入状态文件: {}", file_path.display()))?;
+
+    Ok(())
+}
+
+fn read_cli_recording_state() -> Result<(u32, PathBuf)> {
+    let file_path = cli_state_dir()?.join(CLI_RECORDING_STATE_FILE);
+    let data = fs::read_to_string(&file_path)
+        .with_context(|| format!("无法读取录屏状态文件: {}", file_path.display()))?;
+
+    let value: Value = serde_json::from_str(&data).context("录屏状态文件解析失败")?;
+    let pid = value
+        .get("pid")
+        .and_then(Value::as_u64)
+        .context("录屏状态缺少 pid")? as u32;
+
+    let output_path = value
+        .get("output_path")
+        .and_then(Value::as_str)
+        .context("录屏状态缺少 output_path")?;
+
+    Ok((pid, PathBuf::from(output_path)))
+}
+
+fn clear_cli_recording_state() {
+    if let Ok(file_path) = cli_state_dir().map(|dir| dir.join(CLI_RECORDING_STATE_FILE)) {
+        let _ = fs::remove_file(file_path);
+    }
+}
+
+fn cli_state_dir() -> Result<PathBuf> {
+    if let Some(state_dir) = dirs::state_dir() {
+        return Ok(state_dir.join("ncaptura"));
+    }
+
+    if let Some(home_dir) = dirs::home_dir() {
+        return Ok(home_dir.join(".local").join("state").join("ncaptura"));
+    }
+
+    bail!("无法定位状态目录")
 }
