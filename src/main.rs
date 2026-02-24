@@ -4,6 +4,7 @@ mod save_dialog;
 
 use std::env;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::time::Duration;
 
 use adw::prelude::*;
@@ -171,21 +172,172 @@ fn perform_capture(
     result: &interactive_dialog::InteractiveDialogResult,
     guard: gtk::gio::ApplicationHoldGuard,
 ) {
-    let target = match result.mode {
-        CaptureMode::Screen => CaptureTarget::Fullscreen,
-        CaptureMode::Window => CaptureTarget::Region,
-        CaptureMode::Selection => CaptureTarget::Region,
-    };
+    match result.mode {
+        CaptureMode::Screen => {
+            schedule_target_capture(app, CaptureTarget::Fullscreen, result.delay_seconds, guard);
+        }
+        CaptureMode::Selection => {
+            schedule_target_capture(app, CaptureTarget::Region, result.delay_seconds, guard);
+        }
+        CaptureMode::Window => {
+            show_window_picker(app, result.delay_seconds, guard);
+        }
+    }
+}
 
-    if result.delay_seconds > 0 {
-        let delay = result.delay_seconds;
+fn schedule_target_capture(
+    app: &adw::Application,
+    target: CaptureTarget,
+    delay_seconds: u32,
+    guard: gtk::gio::ApplicationHoldGuard,
+) {
+    if delay_seconds > 0 {
         let app = app.clone();
-        gtk::glib::timeout_add_local_once(Duration::from_secs(delay as u64), move || {
+        gtk::glib::timeout_add_local_once(Duration::from_secs(delay_seconds as u64), move || {
             take_and_show(&app, target, guard);
         });
     } else {
         take_and_show(app, target, guard);
     }
+}
+
+fn show_window_picker(
+    app: &adw::Application,
+    delay_seconds: u32,
+    guard: gtk::gio::ApplicationHoldGuard,
+) {
+    let mut windows = match capture::list_windows() {
+        Ok(items) => items,
+        Err(err) => {
+            eprintln!("读取窗口列表失败: {err}");
+            return;
+        }
+    };
+
+    windows.retain(|w| w.app_id != "io.ncaptura.app");
+    if windows.is_empty() {
+        eprintln!("没有可供选择的窗口");
+        return;
+    }
+
+    let picker = adw::ApplicationWindow::builder()
+        .application(app)
+        .title("Select Window")
+        .default_width(560)
+        .default_height(440)
+        .resizable(false)
+        .build();
+
+    let root = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    root.set_margin_top(16);
+    root.set_margin_bottom(16);
+    root.set_margin_start(16);
+    root.set_margin_end(16);
+
+    let hint = gtk::Label::new(Some("选择要截图的窗口"));
+    hint.set_halign(gtk::Align::Start);
+    root.append(&hint);
+
+    let list = gtk::ListBox::new();
+    list.set_selection_mode(gtk::SelectionMode::Single);
+    list.add_css_class("boxed-list");
+    list.set_vexpand(true);
+
+    for window in &windows {
+        let row = gtk::ListBoxRow::new();
+        let row_box = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        row_box.set_margin_top(8);
+        row_box.set_margin_bottom(8);
+        row_box.set_margin_start(8);
+        row_box.set_margin_end(8);
+
+        let title = gtk::Label::new(Some(&window.title));
+        title.set_halign(gtk::Align::Start);
+        title.set_wrap(true);
+
+        let subtitle = gtk::Label::new(Some(&format!(
+            "{}  |  workspace {}  |  id {}",
+            window.app_id, window.workspace_id, window.id
+        )));
+        subtitle.set_halign(gtk::Align::Start);
+        subtitle.add_css_class("dim-label");
+
+        row_box.append(&title);
+        row_box.append(&subtitle);
+        row.set_child(Some(&row_box));
+        list.append(&row);
+    }
+
+    root.append(&list);
+
+    let action_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    action_row.set_halign(gtk::Align::End);
+    let cancel = gtk::Button::with_label("Cancel");
+    let capture_btn = gtk::Button::with_label("Take Screenshot");
+    capture_btn.add_css_class("suggested-action");
+    action_row.append(&cancel);
+    action_row.append(&capture_btn);
+    root.append(&action_row);
+
+    picker.set_content(Some(&root));
+
+    let windows = Rc::new(windows);
+    let selected_index = Rc::new(std::cell::RefCell::new(Some(0usize)));
+    list.select_row(list.row_at_index(0).as_ref());
+
+    {
+        let selected_index = selected_index.clone();
+        list.connect_selected_rows_changed(move |listbox| {
+            let row = listbox.selected_row();
+            *selected_index.borrow_mut() = row.map(|r| r.index() as usize);
+        });
+    }
+
+    let guard_cell = Rc::new(std::cell::RefCell::new(Some(guard)));
+
+    {
+        let picker = picker.clone();
+        let guard_cell = guard_cell.clone();
+        cancel.connect_clicked(move |_| {
+            picker.destroy();
+            let _ = guard_cell.borrow_mut().take();
+        });
+    }
+
+    {
+        let picker = picker.clone();
+        let app = app.clone();
+        let windows = windows.clone();
+        let selected_index = selected_index.clone();
+        let guard_cell = guard_cell.clone();
+        capture_btn.connect_clicked(move |_| {
+            let Some(idx) = *selected_index.borrow() else {
+                return;
+            };
+            let Some(info) = windows.get(idx) else {
+                return;
+            };
+            let Some(guard) = guard_cell.borrow_mut().take() else {
+                return;
+            };
+
+            picker.destroy();
+            if delay_seconds > 0 {
+                let app = app.clone();
+                let window_id = info.id;
+                gtk::glib::timeout_add_local_once(
+                    Duration::from_secs(delay_seconds as u64),
+                    move || {
+                        take_window_and_show(&app, window_id, guard);
+                    },
+                );
+            } else {
+                take_window_and_show(&app, info.id, guard);
+            }
+        });
+    }
+
+    picker.present();
 }
 
 fn take_and_show(
@@ -201,6 +353,32 @@ fn take_and_show(
         }
     };
 
+    show_save_dialog_for_path(app, path);
+}
+
+fn take_window_and_show(
+    app: &adw::Application,
+    window_id: u64,
+    _guard: gtk::gio::ApplicationHoldGuard,
+) {
+    let path = match capture::take_window_screenshot(window_id, false) {
+        Ok(p) => p,
+        Err(err) => {
+            if capture::is_window_protocol_unsupported_error(&err) {
+                if let Err(niri_err) = capture::take_window_screenshot_via_niri(window_id) {
+                    eprintln!("窗口截图失败: {niri_err}");
+                }
+                return;
+            }
+            eprintln!("窗口截图失败: {err}");
+            return;
+        }
+    };
+
+    show_save_dialog_for_path(app, path);
+}
+
+fn show_save_dialog_for_path(app: &adw::Application, path: PathBuf) {
     let pixbuf = match Pixbuf::from_file(&path) {
         Ok(p) => p,
         Err(err) => {
