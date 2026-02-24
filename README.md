@@ -4,6 +4,8 @@
 
 这份文档聚焦 CLI 使用方式，方便你直接绑定快捷键或在脚本中调用。
 
+当前版本：`0.1.0`
+
 ## 1. 环境要求
 
 推荐在 Wayland 会话下使用，并确保以下命令可用：
@@ -14,7 +16,39 @@
 - `pactl`：可选，仅在 `--audio` 时用于自动选择系统混音设备
 - `niri`：可选，在 `fullscreen` 模式下用于识别当前聚焦输出
 
-## 2. 快速运行方式
+## 2. 通过 PKGBUILD 安装（Arch Linux / AUR）
+
+当前仓库提供 `ncaptura-git` 的 `PKGBUILD`，可按以下方式安装。
+
+先安装构建工具：
+
+```bash
+sudo pacman -S --needed base-devel git
+```
+
+### 方式 A：本地 PKGBUILD 构建安装
+
+在本仓库根目录执行：
+
+```bash
+makepkg -si
+```
+
+### 方式 B：发布到 AUR 后通过 AUR Helper 安装
+
+当 AUR 包上线后可直接安装：
+
+```bash
+yay -S ncaptura-git
+```
+
+安装完成后可用以下命令验证：
+
+```bash
+ncaptura help
+```
+
+## 3. 快速运行方式
 
 如果你还没安装二进制，可直接通过 Cargo 调用：
 
@@ -29,7 +63,7 @@ cargo run -- record start region
 ncaptura help
 ```
 
-## 3. CLI 命令一览
+## 4. CLI 命令一览
 
 ### 截图
 
@@ -61,7 +95,7 @@ ncaptura record stop
 ncaptura help
 ```
 
-## 4. 输出文件位置
+## 5. 输出文件位置
 
 默认保存到 `图片目录/NCaptura` 下：
 
@@ -73,7 +107,7 @@ ncaptura help
 - `screenshot-region-20260224-213015.png`
 - `recording-fullscreen-20260224-213102.mkv`
 
-## 5. 录屏状态文件（CLI）
+## 6. 录屏状态文件（CLI）
 
 CLI 录屏启动后会写入状态文件，用于后续 `record stop`：
 
@@ -81,7 +115,7 @@ CLI 录屏启动后会写入状态文件，用于后续 `record stop`：
 
 如果你的系统设置了 `XDG_STATE_HOME`，则会使用对应状态目录。
 
-## 6. niri 快捷键示例
+## 7. niri 快捷键示例
 
 可在 niri 配置中直接绑定：
 
@@ -93,7 +127,7 @@ Mod+Shift+A    { spawn "ncaptura" "record" "start" "region" "--audio"; }
 Mod+Shift+E    { spawn "ncaptura" "record" "stop"; }
 ```
 
-## 7. 常见问题
+## 8. 常见问题
 
 ### `record stop` 提示无法读取状态文件
 
