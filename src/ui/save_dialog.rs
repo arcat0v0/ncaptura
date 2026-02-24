@@ -7,11 +7,6 @@ use gtk::gdk;
 use gtk::gdk::prelude::GdkCairoContextExt;
 use gtk::gdk_pixbuf::Pixbuf;
 
-pub struct SaveDialogResult {
-    pub folder: PathBuf,
-    pub filename: String,
-}
-
 pub fn build_save_dialog(
     app: &adw::Application,
     screenshot: &Pixbuf,
@@ -19,7 +14,6 @@ pub fn build_save_dialog(
     initial_filename: &str,
 ) -> adw::ApplicationWindow {
     let selected_folder = Rc::new(RefCell::new(initial_folder.clone()));
-    let result: Rc<RefCell<Option<SaveDialogResult>>> = Rc::new(RefCell::new(None));
 
     let window = adw::ApplicationWindow::builder()
         .application(app)
@@ -156,13 +150,7 @@ pub fn build_save_dialog(
 
     {
         let window = window.clone();
-        let name_entry = name_entry.clone();
-        let selected_folder = selected_folder.clone();
-        let result = result.clone();
         save_button.connect_clicked(move |_| {
-            let filename = name_entry.text().to_string();
-            let folder = selected_folder.borrow().clone();
-            *result.borrow_mut() = Some(SaveDialogResult { folder, filename });
             window.close();
         });
     }
