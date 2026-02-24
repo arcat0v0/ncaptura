@@ -1,2 +1,12 @@
 /target
 /design
+
+# Local tooling
+/.opencode/
+
+# Arch makepkg/AUR build artifacts
+/pkg/
+/ncaptura/
+/src/ncaptura/
+/*.pkg.tar.*
+/*.src.tar.*
