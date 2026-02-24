@@ -1,57 +1,23 @@
 mod capture;
+mod interactive_dialog;
+mod save_dialog;
 
-use std::cell::RefCell;
 use std::env;
-use std::rc::Rc;
-use std::time::{Duration, Instant};
+use std::path::PathBuf;
+use std::time::Duration;
 
-use gtk::gdk;
-use gtk::prelude::*;
-use gtk::{
-    Align, Application, ApplicationWindow, Box as GtkBox, Button, HeaderBar, Label, Orientation,
-    Spinner, ToggleButton,
-};
-use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
+use adw::prelude::*;
+use gtk::gdk_pixbuf::Pixbuf;
 
-use crate::capture::{CaptureTarget, RecordingSession};
-
-const WINDOW_WIDTH: i32 = 360;
-const WINDOW_HEIGHT: i32 = 460;
-const WINDOW_MARGIN: i32 = 18;
-
-const WINDOW_CSS: &str = r#"
-window.ncaptura-window {
-  border-radius: 12px;
-  background-color: @window_bg_color;
-  box-shadow: 0 10px 26px alpha(@window_fg_color, 0.22);
-}
-
-window.ncaptura-window > box {
-  border-radius: 12px;
-  background-color: @window_bg_color;
-}
-
-window.ncaptura-window headerbar {
-  border-top-left-radius: 12px;
-  border-top-right-radius: 12px;
-}
-"#;
-
-#[derive(Default)]
-struct RecordingUiState {
-    session: Option<RecordingSession>,
-    started_at: Option<Instant>,
-    target: Option<CaptureTarget>,
-    with_audio: bool,
-    ticker: Option<gtk::glib::SourceId>,
-}
+use crate::capture::CaptureTarget;
+use crate::interactive_dialog::CaptureMode;
 
 fn main() {
     if let Err(code) = handle_cli_if_requested() {
         std::process::exit(code);
     }
 
-    let app = Application::builder()
+    let app = adw::Application::builder()
         .application_id("io.ncaptura.app")
         .build();
 
@@ -192,496 +158,65 @@ niri 快捷键示例:
   Mod+Shift+E    { spawn \"ncaptura\" \"record\" \"stop\"; }"
 }
 
-fn build_ui(app: &Application) {
-    let recording_state: Rc<RefCell<RecordingUiState>> =
-        Rc::new(RefCell::new(RecordingUiState::default()));
-
-    let window = ApplicationWindow::builder()
-        .application(app)
-        .title("NCaptura")
-        .default_width(WINDOW_WIDTH)
-        .default_height(WINDOW_HEIGHT)
-        .resizable(false)
-        .build();
-    window.set_size_request(WINDOW_WIDTH, WINDOW_HEIGHT);
-
-    configure_window_placement(&window);
-    apply_window_style(&window);
-
-    let header_bar = HeaderBar::new();
-    header_bar.set_show_title_buttons(true);
-    let title_label = Label::new(Some("NCaptura"));
-    title_label.add_css_class("title-4");
-    header_bar.set_title_widget(Some(&title_label));
-
-    let close_button = Button::builder()
-        .icon_name("window-close-symbolic")
-        .tooltip_text("关闭")
-        .build();
-    close_button.add_css_class("flat");
-    {
-        let window = window.clone();
-        close_button.connect_clicked(move |_| {
-            window.close();
-        });
-    }
-    header_bar.pack_end(&close_button);
-
-    window.set_titlebar(Some(&header_bar));
-
-    let content_box = GtkBox::new(Orientation::Vertical, 24);
-    content_box.set_margin_top(24);
-    content_box.set_margin_bottom(24);
-    content_box.set_margin_start(24);
-    content_box.set_margin_end(24);
-    content_box.set_valign(Align::Center);
-
-    let screenshot_box = GtkBox::new(Orientation::Vertical, 12);
-    let screenshot_label = Label::new(Some("截图"));
-    screenshot_label.add_css_class("title-4");
-    screenshot_label.set_opacity(0.8);
-
-    let screenshot_actions = GtkBox::new(Orientation::Horizontal, 16);
-    screenshot_actions.set_halign(Align::Center);
-
-    let screenshot_region_btn = build_icon_button("crop-symbolic", "区域截图");
-    let screenshot_full_btn = build_icon_button("view-fullscreen-symbolic", "全屏截图");
-
-    screenshot_actions.append(&screenshot_region_btn);
-    screenshot_actions.append(&screenshot_full_btn);
-
-    let screenshot_copy_row = GtkBox::new(Orientation::Horizontal, 8);
-    screenshot_copy_row.set_halign(Align::Center);
-
-    let screenshot_copy_toggle = ToggleButton::builder()
-        .icon_name("edit-copy-symbolic")
-        .tooltip_text("截图后复制到剪贴板")
-        .build();
-    screenshot_copy_toggle.add_css_class("circular");
-
-    let screenshot_copy_label = Label::new(Some("截图后复制"));
-    screenshot_copy_label.add_css_class("caption");
-    screenshot_copy_label.add_css_class("dim-label");
-
-    screenshot_copy_row.append(&screenshot_copy_toggle);
-    screenshot_copy_row.append(&screenshot_copy_label);
-
-    screenshot_box.append(&screenshot_label);
-    screenshot_box.append(&screenshot_actions);
-    screenshot_box.append(&screenshot_copy_row);
-
-    let recording_box = GtkBox::new(Orientation::Vertical, 12);
-    let recording_label = Label::new(Some("录屏"));
-    recording_label.add_css_class("title-4");
-    recording_label.set_opacity(0.8);
-
-    let recording_actions = GtkBox::new(Orientation::Horizontal, 16);
-    recording_actions.set_halign(Align::Center);
-
-    let recording_region_btn = build_icon_button("media-record-symbolic", "区域录屏");
-    recording_region_btn.add_css_class("suggested-action");
-
-    let recording_full_btn = build_icon_button("video-x-generic-symbolic", "全屏录屏");
-    recording_full_btn.add_css_class("suggested-action");
-
-    recording_actions.append(&recording_region_btn);
-    recording_actions.append(&recording_full_btn);
-
-    let audio_toggle = ToggleButton::builder()
-        .icon_name("audio-input-microphone-symbolic")
-        .tooltip_text("录制系统音频")
-        .halign(Align::Center)
-        .build();
-    audio_toggle.add_css_class("circular");
-
-    let recording_controls = GtkBox::new(Orientation::Vertical, 12);
-    recording_controls.append(&recording_actions);
-    recording_controls.append(&audio_toggle);
-
-    recording_box.append(&recording_label);
-    recording_box.append(&recording_controls);
-
-    let stop_recording_btn = Button::builder()
-        .label("停止录屏")
-        .icon_name("media-playback-stop-symbolic")
-        .sensitive(false)
-        .halign(Align::Center)
-        .build();
-    stop_recording_btn.add_css_class("destructive-action");
-    stop_recording_btn.add_css_class("pill");
-
-    let status_row = GtkBox::new(Orientation::Horizontal, 8);
-    status_row.set_halign(Align::Center);
-
-    let status_spinner = Spinner::new();
-    status_spinner.set_visible(false);
-
-    let status_label = Label::new(Some("就绪"));
-    status_label.add_css_class("dim-label");
-    status_label.set_ellipsize(gtk::pango::EllipsizeMode::End);
-    status_label.set_width_chars(20);
-    status_label.set_width_request(220);
-    status_label.set_xalign(0.5);
-
-    status_row.append(&status_spinner);
-    status_row.append(&status_label);
-
-    content_box.append(&screenshot_box);
-    content_box.append(&recording_box);
-    content_box.append(&stop_recording_btn);
-    content_box.append(&status_row);
-
-    window.set_child(Some(&content_box));
-
-    {
-        let status_label = status_label.clone();
-        let status_spinner = status_spinner.clone();
-        let screenshot_copy_toggle = screenshot_copy_toggle.clone();
-        screenshot_region_btn.connect_clicked(move |_| {
-            status_spinner.stop();
-            status_spinner.set_visible(false);
-            status_label.remove_css_class("dim-label");
-
-            let copy_to_clipboard = screenshot_copy_toggle.is_active();
-            match capture::take_screenshot_with_clipboard(CaptureTarget::Region, copy_to_clipboard)
-            {
-                Ok(path) => status_label.set_text(&format!(
-                    "已保存{}: {}",
-                    if copy_to_clipboard { "并复制" } else { "" },
-                    path.file_name().unwrap_or_default().to_string_lossy(),
-                )),
-                Err(err) => status_label.set_text(&format!("截图失败: {err}")),
-            }
-        });
-    }
-
-    {
-        let status_label = status_label.clone();
-        let status_spinner = status_spinner.clone();
-        let screenshot_copy_toggle = screenshot_copy_toggle.clone();
-        screenshot_full_btn.connect_clicked(move |_| {
-            status_spinner.stop();
-            status_spinner.set_visible(false);
-            status_label.remove_css_class("dim-label");
-
-            let copy_to_clipboard = screenshot_copy_toggle.is_active();
-            match capture::take_screenshot_with_clipboard(
-                CaptureTarget::Fullscreen,
-                copy_to_clipboard,
-            ) {
-                Ok(path) => status_label.set_text(&format!(
-                    "已保存{}: {}",
-                    if copy_to_clipboard { "并复制" } else { "" },
-                    path.file_name().unwrap_or_default().to_string_lossy(),
-                )),
-                Err(err) => status_label.set_text(&format!("截图失败: {err}")),
-            }
-        });
-    }
-
-    {
-        let recording_state = recording_state.clone();
-        let audio_toggle = audio_toggle.clone();
-        let status_label = status_label.clone();
-        let status_spinner = status_spinner.clone();
-        let rec_region_btn = recording_region_btn.clone();
-        let rec_full_btn = recording_full_btn.clone();
-        let stop_btn = stop_recording_btn.clone();
-
-        recording_region_btn.connect_clicked(move |_| {
-            start_recording(
-                CaptureTarget::Region,
-                &recording_state,
-                &audio_toggle,
-                &status_label,
-                &status_spinner,
-                &rec_region_btn,
-                &rec_full_btn,
-                &stop_btn,
-            );
-        });
-    }
-
-    {
-        let recording_state = recording_state.clone();
-        let audio_toggle = audio_toggle.clone();
-        let status_label = status_label.clone();
-        let status_spinner = status_spinner.clone();
-        let rec_region_btn = recording_region_btn.clone();
-        let rec_full_btn = recording_full_btn.clone();
-        let stop_btn = stop_recording_btn.clone();
-
-        recording_full_btn.connect_clicked(move |_| {
-            start_recording(
-                CaptureTarget::Fullscreen,
-                &recording_state,
-                &audio_toggle,
-                &status_label,
-                &status_spinner,
-                &rec_region_btn,
-                &rec_full_btn,
-                &stop_btn,
-            );
-        });
-    }
-
-    {
-        let recording_state = recording_state.clone();
-        let audio_toggle = audio_toggle.clone();
-        let status_label = status_label.clone();
-        let status_spinner = status_spinner.clone();
-        let rec_region_btn = recording_region_btn.clone();
-        let rec_full_btn = recording_full_btn.clone();
-        let stop_btn = stop_recording_btn.clone();
-
-        stop_recording_btn.connect_clicked(move |_| {
-            stop_recording(
-                &recording_state,
-                &audio_toggle,
-                &status_label,
-                &status_spinner,
-                &rec_region_btn,
-                &rec_full_btn,
-                &stop_btn,
-            );
-        });
-    }
-
-    {
-        let recording_state = recording_state.clone();
-        window.connect_close_request(move |_| {
-            clear_recording_ticker(&recording_state);
-            if let Some(session) = recording_state.borrow_mut().session.take() {
-                let _ = capture::stop_recording(session);
-            }
-
-            gtk::glib::Propagation::Proceed
-        });
-    }
-
-    window.present();
+fn build_ui(app: &adw::Application) {
+    let app_clone = app.clone();
+    let _window = interactive_dialog::build_interactive_dialog(app, move |result| {
+        let _guard = app_clone.hold();
+        perform_capture(&app_clone, &result, _guard);
+    });
 }
 
-fn build_icon_button(icon_name: &str, tooltip: &str) -> Button {
-    let button = Button::builder()
-        .icon_name(icon_name)
-        .tooltip_text(tooltip)
-        .build();
-    button.add_css_class("circular");
-    button.set_width_request(48);
-    button.set_height_request(48);
-    button
-}
-
-fn apply_window_style(window: &ApplicationWindow) {
-    let css_provider = gtk::CssProvider::new();
-    css_provider.load_from_data(WINDOW_CSS);
-
-    if let Some(display) = gdk::Display::default() {
-        gtk::style_context_add_provider_for_display(
-            &display,
-            &css_provider,
-            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
-        );
-    }
-
-    window.add_css_class("ncaptura-window");
-    window.add_css_class("csd");
-}
-
-fn configure_window_placement(window: &ApplicationWindow) {
-    if !gtk4_layer_shell::is_supported() {
-        return;
-    }
-
-    window.init_layer_shell();
-    window.set_layer(Layer::Top);
-    window.set_anchor(Edge::Top, true);
-    window.set_anchor(Edge::Right, true);
-    window.set_margin(Edge::Top, WINDOW_MARGIN);
-    window.set_margin(Edge::Right, WINDOW_MARGIN);
-    window.set_keyboard_mode(KeyboardMode::OnDemand);
-    window.set_namespace(Some("ncaptura"));
-
-    if let Some(display) = gdk::Display::default()
-        && let Some(monitor) = focused_monitor_from_niri(&display)
-    {
-        window.set_monitor(Some(&monitor));
-    }
-}
-
-fn focused_monitor_from_niri(display: &gdk::Display) -> Option<gdk::Monitor> {
-    let focused_output = capture::focused_output_name().ok()?;
-    let monitors = display.monitors();
-
-    for index in 0..monitors.n_items() {
-        let Some(item) = monitors.item(index) else {
-            continue;
-        };
-
-        let Ok(monitor) = item.downcast::<gdk::Monitor>() else {
-            continue;
-        };
-
-        if monitor.connector().as_deref() == Some(focused_output.as_str()) {
-            return Some(monitor);
-        }
-    }
-
-    None
-}
-
-fn start_recording(
-    target: CaptureTarget,
-    recording_state: &Rc<RefCell<RecordingUiState>>,
-    audio_toggle: &ToggleButton,
-    status_label: &Label,
-    status_spinner: &Spinner,
-    rec_region_btn: &Button,
-    rec_full_btn: &Button,
-    stop_btn: &Button,
+fn perform_capture(
+    app: &adw::Application,
+    result: &interactive_dialog::InteractiveDialogResult,
+    guard: gtk::gio::ApplicationHoldGuard,
 ) {
-    if recording_state.borrow().session.is_some() {
-        status_label.set_text("已有录屏在进行中");
-        return;
-    }
-
-    let with_audio = audio_toggle.is_active();
-    match capture::start_recording(target, with_audio) {
-        Ok(session) => {
-            {
-                let mut state = recording_state.borrow_mut();
-                state.session = Some(session);
-                state.started_at = Some(Instant::now());
-                state.target = Some(target);
-                state.with_audio = with_audio;
-            }
-
-            set_recording_controls(true, audio_toggle, rec_region_btn, rec_full_btn, stop_btn);
-
-            status_label.remove_css_class("dim-label");
-            status_label.set_text(&format_recording_status(0));
-            status_spinner.set_visible(true);
-            status_spinner.start();
-
-            start_recording_ticker(recording_state, status_label, status_spinner);
-        }
-        Err(_err) => {
-            status_spinner.stop();
-            status_spinner.set_visible(false);
-            status_label.remove_css_class("dim-label");
-            status_label.set_text("开始录屏失败");
-        }
-    }
-}
-
-fn stop_recording(
-    recording_state: &Rc<RefCell<RecordingUiState>>,
-    audio_toggle: &ToggleButton,
-    status_label: &Label,
-    status_spinner: &Spinner,
-    rec_region_btn: &Button,
-    rec_full_btn: &Button,
-    stop_btn: &Button,
-) {
-    let session = recording_state.borrow_mut().session.take();
-    let Some(session) = session else {
-        status_label.set_text("当前没有正在进行的录屏");
-        return;
+    let target = match result.mode {
+        CaptureMode::Screen => CaptureTarget::Fullscreen,
+        CaptureMode::Window => CaptureTarget::Region,
+        CaptureMode::Selection => CaptureTarget::Region,
     };
 
-    clear_recording_ticker(recording_state);
-
-    {
-        let mut state = recording_state.borrow_mut();
-        state.started_at = None;
-        state.target = None;
-        state.with_audio = false;
+    if result.delay_seconds > 0 {
+        let delay = result.delay_seconds;
+        let app = app.clone();
+        gtk::glib::timeout_add_local_once(Duration::from_secs(delay as u64), move || {
+            take_and_show(&app, target, guard);
+        });
+    } else {
+        take_and_show(app, target, guard);
     }
-
-    match capture::stop_recording(session) {
-        Ok(_path) => {
-            status_spinner.stop();
-            status_spinner.set_visible(false);
-            status_label.remove_css_class("dim-label");
-            status_label.set_text("录屏已保存");
-        }
-        Err(_err) => {
-            status_spinner.stop();
-            status_spinner.set_visible(false);
-            status_label.remove_css_class("dim-label");
-            status_label.set_text("停止录屏失败");
-        }
-    }
-
-    set_recording_controls(false, audio_toggle, rec_region_btn, rec_full_btn, stop_btn);
 }
 
-fn set_recording_controls(
-    is_recording: bool,
-    audio_toggle: &ToggleButton,
-    rec_region_btn: &Button,
-    rec_full_btn: &Button,
-    stop_btn: &Button,
+fn take_and_show(
+    app: &adw::Application,
+    target: CaptureTarget,
+    _guard: gtk::gio::ApplicationHoldGuard,
 ) {
-    rec_region_btn.set_sensitive(!is_recording);
-    rec_full_btn.set_sensitive(!is_recording);
-    audio_toggle.set_sensitive(!is_recording);
-    stop_btn.set_sensitive(is_recording);
-}
-
-fn start_recording_ticker(
-    recording_state: &Rc<RefCell<RecordingUiState>>,
-    status_label: &Label,
-    status_spinner: &Spinner,
-) {
-    clear_recording_ticker(recording_state);
-
-    let recording_state = recording_state.clone();
-    let ticker_state = recording_state.clone();
-    let status_label = status_label.clone();
-    let status_spinner = status_spinner.clone();
-
-    let source_id = gtk::glib::timeout_add_local(Duration::from_secs(1), move || {
-        let (recording_active, started_at) = {
-            let state = ticker_state.borrow();
-            (state.session.is_some(), state.started_at)
-        };
-
-        if !recording_active {
-            status_spinner.stop();
-            status_spinner.set_visible(false);
-            return gtk::glib::ControlFlow::Break;
+    let path = match capture::take_screenshot(target) {
+        Ok(p) => p,
+        Err(err) => {
+            eprintln!("截图失败: {err}");
+            return;
         }
+    };
 
-        let Some(started_at) = started_at else {
-            return gtk::glib::ControlFlow::Continue;
-        };
+    let pixbuf = match Pixbuf::from_file(&path) {
+        Ok(p) => p,
+        Err(err) => {
+            eprintln!("无法加载截图: {err}");
+            return;
+        }
+    };
 
-        let elapsed_seconds = started_at.elapsed().as_secs();
-        status_spinner.set_visible(true);
-        status_spinner.start();
-        status_label.remove_css_class("dim-label");
-        status_label.set_text(&format_recording_status(elapsed_seconds));
+    let folder = path.parent().map(PathBuf::from).unwrap_or_default();
+    let filename = path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
 
-        gtk::glib::ControlFlow::Continue
-    });
-
-    recording_state.borrow_mut().ticker = Some(source_id);
-}
-
-fn clear_recording_ticker(recording_state: &Rc<RefCell<RecordingUiState>>) {
-    if let Some(source_id) = recording_state.borrow_mut().ticker.take() {
-        source_id.remove();
-    }
-}
-
-fn format_recording_status(elapsed_seconds: u64) -> String {
-    let hours = elapsed_seconds / 3600;
-    let minutes = (elapsed_seconds % 3600) / 60;
-    let seconds = elapsed_seconds % 60;
-
-    format!("{}:{:02}:{:02}", hours, minutes, seconds,)
+    save_dialog::build_save_dialog(app, &pixbuf, &folder, &filename);
 }
 
 enum CliCommand {
