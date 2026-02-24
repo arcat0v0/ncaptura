@@ -9,8 +9,8 @@ use std::path::PathBuf;
 use std::process::Child;
 
 pub use recording::{
-    start_recording, start_recording_detached, stop_recording, stop_recording_detached,
-    toggle_recording_pause,
+    current_cli_recording_state, start_recording, start_recording_detached, stop_recording,
+    stop_recording_detached, toggle_recording_pause,
 };
 pub use screenshot::{
     is_window_protocol_unsupported_error, take_screenshot, take_window_screenshot,
@@ -46,4 +46,10 @@ pub struct RecordingSession {
     pub(crate) child: Child,
     pub(crate) output_path: PathBuf,
     pub(crate) paused: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct CliRecordingState {
+    pub pid: u32,
+    pub output_path: PathBuf,
 }

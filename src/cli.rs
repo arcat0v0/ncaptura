@@ -3,6 +3,7 @@ use std::env;
 use crate::capture::{
     CaptureTarget, start_recording_detached, stop_recording_detached, take_screenshot,
 };
+use crate::ui::run_cli_recording_hud;
 
 pub fn handle_cli_if_requested() -> Result<(), i32> {
     let args: Vec<String> = env::args().skip(1).collect();
@@ -38,8 +39,12 @@ fn run_cli_command(command: CliCommand) -> Result<(), i32> {
         },
         CliCommand::RecordStart { target, audio } => {
             match start_recording_detached(target, audio) {
-                Ok(path) => {
-                    println!("录屏已开始，输出文件: {}", path.display());
+                Ok(state) => {
+                    println!(
+                        "录屏已开始，输出文件: {}\n已显示右上角录制小窗，可在小窗中暂停/停止，或使用 `ncaptura record stop` 停止录屏。",
+                        state.output_path.display()
+                    );
+                    run_cli_recording_hud(state);
                     Ok(())
                 }
                 Err(err) => {

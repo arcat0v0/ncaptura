@@ -11,7 +11,7 @@ use crate::capture::output::build_output_path;
 use crate::capture::state::{
     clear_cli_recording_state, read_cli_recording_state, write_cli_recording_state,
 };
-use crate::capture::{CaptureTarget, RecordingSession, focused_output_name};
+use crate::capture::{CaptureTarget, CliRecordingState, RecordingSession, focused_output_name};
 
 pub fn start_recording(target: CaptureTarget, with_audio: bool) -> Result<RecordingSession> {
     let output_path =
@@ -108,7 +108,10 @@ pub fn stop_recording(mut session: RecordingSession) -> Result<PathBuf> {
     Ok(session.output_path)
 }
 
-pub fn start_recording_detached(target: CaptureTarget, with_audio: bool) -> Result<PathBuf> {
+pub fn start_recording_detached(
+    target: CaptureTarget,
+    with_audio: bool,
+) -> Result<CliRecordingState> {
     if read_cli_recording_state().is_ok() {
         bail!("已有通过 CLI 启动的录屏在进行中，请先停止");
     }
@@ -143,13 +146,20 @@ pub fn start_recording_detached(target: CaptureTarget, with_audio: bool) -> Resu
         .spawn()
         .context("无法启动 wf-recorder，请确认已安装并在 PATH 中")?;
 
-    write_cli_recording_state(child.id(), &output_path)?;
-    Ok(output_path)
+    let pid = child.id();
+    write_cli_recording_state(pid, &output_path)?;
+    Ok(CliRecordingState { pid, output_path })
 }
 
 pub fn stop_recording_detached() -> Result<PathBuf> {
     let (pid, output_path) = read_cli_recording_state()?;
     let process_id = Pid::from_raw(pid as i32);
+
+    if let Err(err) = kill(process_id, Signal::SIGCONT)
+        && err != Errno::ESRCH
+    {
+        bail!("发送恢复信号失败: {err}");
+    }
 
     if let Err(err) = kill(process_id, Signal::SIGINT)
         && err != Errno::ESRCH
@@ -159,4 +169,9 @@ pub fn stop_recording_detached() -> Result<PathBuf> {
 
     clear_cli_recording_state();
     Ok(output_path)
+}
+
+pub fn current_cli_recording_state() -> Result<CliRecordingState> {
+    let (pid, output_path) = read_cli_recording_state()?;
+    Ok(CliRecordingState { pid, output_path })
 }
