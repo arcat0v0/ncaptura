@@ -29,6 +29,7 @@ pub struct WindowInfo {
 pub struct RecordingSession {
     child: Child,
     output_path: PathBuf,
+    paused: bool,
 }
 
 const CLI_RECORDING_STATE_FILE: &str = "recording.json";
@@ -179,10 +180,47 @@ pub fn start_recording(target: CaptureTarget, with_audio: bool) -> Result<Record
         .spawn()
         .context("无法启动 wf-recorder，请确认已安装并在 PATH 中")?;
 
-    Ok(RecordingSession { child, output_path })
+    Ok(RecordingSession {
+        child,
+        output_path,
+        paused: false,
+    })
+}
+
+pub fn toggle_recording_pause(session: &mut RecordingSession) -> Result<bool> {
+    let pid = Pid::from_raw(session.child.id() as i32);
+
+    if session.paused {
+        if let Err(err) = kill(pid, Signal::SIGCONT)
+            && err != Errno::ESRCH
+        {
+            bail!("恢复录屏失败: {err}");
+        }
+        session.paused = false;
+        return Ok(false);
+    }
+
+    if let Err(err) = kill(pid, Signal::SIGSTOP)
+        && err != Errno::ESRCH
+    {
+        bail!("暂停录屏失败: {err}");
+    }
+
+    session.paused = true;
+    Ok(true)
 }
 
 pub fn stop_recording(mut session: RecordingSession) -> Result<PathBuf> {
+    if session.paused {
+        let pid = Pid::from_raw(session.child.id() as i32);
+        if let Err(err) = kill(pid, Signal::SIGCONT)
+            && err != Errno::ESRCH
+        {
+            bail!("恢复录屏失败: {err}");
+        }
+        session.paused = false;
+    }
+
     if session
         .child
         .try_wait()
