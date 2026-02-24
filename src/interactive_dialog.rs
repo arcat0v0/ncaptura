@@ -279,11 +279,11 @@ fn show_recording_hud(
         .application(app)
         .title("Recording")
         .default_width(300)
-        .default_height(70)
+        .default_height(50)
         .resizable(false)
         .build();
     hud.set_decorated(false);
-    hud.set_size_request(300, 70);
+    hud.set_size_request(300, 50);
     hud.add_css_class("recording-hud");
 
     if gtk4_layer_shell::is_supported() {
@@ -304,9 +304,8 @@ fn show_recording_hud(
     row.set_margin_end(12);
     row.set_halign(Align::Fill);
 
-    let indicator = GtkBox::new(Orientation::Horizontal, 0);
+    let indicator = Label::new(Some("●"));
     indicator.add_css_class("recording-indicator");
-    indicator.set_size_request(8, 8);
 
     let timer_label = Label::new(Some("00:00:00"));
     timer_label.add_css_class("title-4");
@@ -471,15 +470,14 @@ fn apply_recording_hud_css() {
             border-radius: 14px;
         }
 
-        window.recording-hud box.recording-indicator {
-            min-width: 8px;
-            min-height: 8px;
-            border-radius: 999px;
-            background: #e53935;
+        window.recording-hud label.recording-indicator {
+            color: #e53935;
+            font-size: 10px;
+            font-weight: 700;
         }
 
-        window.recording-hud box.recording-indicator.paused {
-            background: #f4b400;
+        window.recording-hud label.recording-indicator.paused {
+            color: #f4b400;
         }
 
         window.recording-hud button.stop-record-btn {
