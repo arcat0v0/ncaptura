@@ -1,0 +1,125 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: Build and publish release artifacts
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libgtk-4-dev libadwaita-1-dev libgtk4-layer-shell-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Resolve and verify version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          crate_version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+          echo "tag=${version} crate=${crate_version}"
+          test "$version" = "$crate_version"
+          echo "VERSION=${version}" >> "$GITHUB_ENV"
+
+      - name: Run unit tests
+        run: cargo test --locked
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deb@3.8.0,cargo-generate-rpm@0.21.0
+
+      - name: Build deb package
+        run: |
+          mkdir -p dist
+          cargo deb --no-build
+          cp "target/debian/ncaptura_${VERSION}_amd64.deb" "dist/"
+
+      - name: Build rpm package
+        run: |
+          mkdir -p dist
+          cargo generate-rpm
+          cp "target/generate-rpm/ncaptura-${VERSION}-1.x86_64.rpm" "dist/ncaptura-${VERSION}.x86_64.rpm"
+
+      - name: Build tarball
+        run: |
+          mkdir -p "dist/ncaptura-${VERSION}"
+          cp target/release/ncaptura README.md LICENSE-MIT LICENSE-APACHE "dist/ncaptura-${VERSION}/"
+          cp -r docs "dist/ncaptura-${VERSION}/"
+          tar -C dist -czf "dist/ncaptura-${VERSION}-x86_64.tar.gz" "ncaptura-${VERSION}"
+          rm -rf "dist/ncaptura-${VERSION}"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "NCaptura ${VERSION}" \
+            --generate-notes \
+            "dist/ncaptura_${VERSION}_amd64.deb" \
+            "dist/ncaptura-${VERSION}.x86_64.rpm" \
+            "dist/ncaptura-${VERSION}-x86_64.tar.gz"
+
+  aur:
+    name: Publish stable package to AUR
+    needs: release
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: pacman -Sy --noconfirm --needed git openssh curl
+
+      - name: Push ncaptura package to AUR
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${AUR_SSH_PRIVATE_KEY}" ]; then
+            echo "AUR_SSH_PRIVATE_KEY secret not set; skipping AUR publication"
+            exit 0
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          sha256="$(curl -sL "https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz" | sha256sum | cut -d' ' -f1)"
+          useradd -m build
+          install -dm700 -o build /home/build/.ssh
+          printf '%s\n' "${AUR_SSH_PRIVATE_KEY}" > /home/build/.ssh/id_ed25519
+          ssh-keyscan aur.archlinux.org >> /home/build/.ssh/known_hosts
+          chmod 600 /home/build/.ssh/id_ed25519
+          chown build:build /home/build/.ssh/id_ed25519 /home/build/.ssh/known_hosts
+          sed -e "s/^pkgver=.*/pkgver=${version}/" \
+              -e "s/^sha256sums=.*/sha256sums=('${sha256}')/" \
+              aur/PKGBUILD > /home/build/PKGBUILD
+          chown build:build /home/build/PKGBUILD
+          runuser -u build -- bash -eux <<EOF
+          cd /home/build
+          if ! git clone ssh://aur@aur.archlinux.org/ncaptura.git repo; then
+            mkdir repo
+            git -C repo init
+            git -C repo remote add origin ssh://aur@aur.archlinux.org/ncaptura.git
+          fi
+          cp PKGBUILD repo/PKGBUILD
+          git -C repo config user.name "ncaptura-ci"
+          git -C repo config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cd repo
+          makepkg --printsrcinfo > .SRCINFO
+          git add PKGBUILD .SRCINFO
+          git diff --cached --quiet || git commit -m "release v${version}"
+          git push origin HEAD:master
+          EOF

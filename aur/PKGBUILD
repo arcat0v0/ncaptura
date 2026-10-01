@@ -1,0 +1,45 @@
+pkgname=ncaptura
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="GTK4 + Libadwaita screenshot, recording, OCR and translation tool"
+arch=('x86_64')
+options=('!lto')
+url="https://github.com/arcat0v0/ncaptura"
+license=('MIT' 'Apache-2.0')
+depends=('gcc-libs' 'glibc' 'gtk4' 'libadwaita' 'gtk4-layer-shell' 'grim' 'slurp' 'wf-recorder' 'wl-clipboard')
+makedepends=('cargo')
+optdepends=(
+  'libpulse: pactl support for --audio auto device selection'
+  'python310: system interpreter used by `ncaptura ocr setup` (any of python310-313 works)'
+)
+source=("${pkgname}-${pkgver}.tar.gz::https://github.com/arcat0v0/ncaptura/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked
+}
+
+build() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR="target"
+  cargo build --frozen --release
+}
+
+check() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR="target"
+  cargo test --frozen
+}
+
+package() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  install -Dm755 "target/release/${pkgname}" "${pkgdir}/usr/bin/${pkgname}"
+  install -Dm644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+  install -Dm644 docs/README_EN.md "${pkgdir}/usr/share/doc/${pkgname}/README_EN.md"
+  install -Dm644 LICENSE-MIT "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE-MIT"
+  install -Dm644 LICENSE-APACHE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE-APACHE"
+}

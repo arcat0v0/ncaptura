@@ -37,6 +37,7 @@ cargo +stable test -- --ignored translates_via_public_instance               # �
 - **OCR 相关文件必须落在 ncaptura 专属目录**（XDG 规范）：venv 与模型在 `~/.local/share/ncaptura/`，辅助脚本在 `~/.cache/ncaptura/`；模型目录通过 `PADDLE_PDX_CACHE_HOME` 控制，禁止散落 `~/.paddlex`
 - **gtk4 feature 只开 `v4_8`**：`save_dialog.rs` 等旧代码用到 GTK 4.10 起废弃的 API，升级到 `v4_10` 会引入弃用警告，需连同旧代码一起迁移才可开启
 - **翻译设置只进配置文件**（`translate.*`），不经环境变量；`NCAPTURA_OCR_PYTHON` 是 OCR 仅有的环境变量逃生口
+- **Arch 打包必须 `options=('!lto')`**：makepkg 注入的 `-flto=auto` 会让 ring（ureq→rustls 链）的 C 对象被 rust-lld 丢弃符号导致链接失败
 - 提交使用 gitmoji，不加 `Co-Authored-By`；暂存内容仅限本次任务修改
 
 ## 发版流程
@@ -48,10 +49,9 @@ cargo +stable test -- --ignored translates_via_public_instance               # �
    - 运行两个 ignored 集成测试（OCR 真实图片、mozhi 公共实例）
    - `cargo +stable build --release` 成功
 3. **打标签**：`git tag vX.Y.Z` 并 `git push origin main --tags`
-4. **构建并发产物**到 [GitHub Releases](https://github.com/arcat0v0/ncaptura/releases)：
-   - `ncaptura_<version>_amd64.deb`
-   - `ncaptura-<version>.x86_64.rpm`
-   - `ncaptura-<version>.AppImage`（便携 CLI 形态，不含桌面入口）
-5. **AUR 发布**：同步更新 AUR 包（`ncaptura-git` 跟随 main；稳定包按 tag 更新 `pkgver` 并推送 AUR 仓库）。
-   **注意**：AUR 信息不写入 `README.md`；README 的用户引导只提 deb / rpm / AppImage 与源码安装
-6. **发版后验证**：在干净环境用 deb 或 AppImage 安装，`ncaptura help` 与 `ncaptura ocr` 冒烟通过
+4. **自动发版**：tag 推送触发 `.github/workflows/release.yml`：
+   - 校验 tag 与 `Cargo.toml` 版本一致（不一致即失败）
+   - 构建并上传 `ncaptura_<version>_amd64.deb`、`ncaptura-<version>.x86_64.rpm`、`ncaptura-<version>-x86_64.tar.gz` 到 GitHub Releases；deb/rpm 依赖声明分别用 Debian / Fedora 包名，见 `Cargo.toml` 的 `package.metadata.deb` / `package.metadata.generate-rpm`
+   - 随后自动更新 AUR 稳定包 `ncaptura`（以 `aur/PKGBUILD` 为模板替换 `pkgver`/`sha256sums` 并推送 AUR 仓库；需要 repo secret `AUR_SSH_PRIVATE_KEY`，未配置则跳过）。`ncaptura-git`（根目录 `PKGBUILD`）跟随 main，无需发版动作
+   **注意**：AUR 信息不写入 `README.md`；README 的用户引导只提 deb / rpm / tar.gz 与源码安装
+5. **发版后验证**：在干净环境用 deb 或 tar.gz 安装，`ncaptura help` 与 `ncaptura ocr` 冒烟通过

@@ -2,6 +2,9 @@
 name = "ncaptura"
 version = "0.1.0"
 edition = "2024"
+description = "Wayland screenshot / screen recording / OCR / translation tool (GTK4 + Libadwaita)"
+authors = ["arcat0v0"]
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 adw = { package = "libadwaita", version = "0.8", features = ["v1_4"] }
@@ -16,3 +19,38 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
 serde_yml = "0.0.12"
 ureq = "3"
+
+[package.metadata.deb]
+maintainer = "arcat0v0"
+section = "utils"
+priority = "optional"
+revision = ""
+depends = "libgtk-4-1 (>= 4.8), libadwaita-1-0, libgtk4-layer-shell0, grim, slurp, wf-recorder, wl-clipboard"
+recommends = "pulseaudio-utils, python3 (>= 3.10)"
+assets = [
+    ["target/release/ncaptura", "usr/bin/ncaptura", "755"],
+    ["README.md", "usr/share/doc/ncaptura/README.md", "644"],
+    ["docs/README_EN.md", "usr/share/doc/ncaptura/README_EN.md", "644"],
+]
+
+[package.metadata.generate-rpm]
+assets = [
+    { source = "target/release/ncaptura", dest = "/usr/bin/ncaptura", mode = "755" },
+    { source = "LICENSE-APACHE", dest = "/usr/share/licenses/ncaptura/LICENSE-APACHE", mode = "644" },
+    { source = "LICENSE-MIT", dest = "/usr/share/licenses/ncaptura/LICENSE-MIT", mode = "644" },
+    { source = "README.md", dest = "/usr/share/doc/ncaptura/README.md", mode = "644" },
+    { source = "docs/README_EN.md", dest = "/usr/share/doc/ncaptura/README_EN.md", mode = "644" },
+]
+
+[package.metadata.generate-rpm.requires]
+gtk4 = "*"
+libadwaita = "*"
+gtk4-layer-shell = "*"
+grim = "*"
+slurp = "*"
+wf-recorder = "*"
+wl-clipboard = "*"
+
+[package.metadata.generate-rpm.recommends]
+pulseaudio-utils = "*"
+python3 = "*"

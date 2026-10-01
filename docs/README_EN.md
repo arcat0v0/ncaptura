@@ -36,7 +36,7 @@ Download the matching format from the [Releases](https://github.com/arcat0v0/nca
 
 - **deb**: `sudo dpkg -i ncaptura_*.deb`
 - **rpm**: `sudo dnf install ncaptura-*.rpm`
-- **AppImage**: provided as a portable CLI form (no desktop entry or system integration); `chmod +x ncaptura-*.AppImage` and invoke from the command line
+- **tar.gz**: portable binary archive (no desktop entry or system integration); extract and put `ncaptura` on your `PATH`
 
 Note: prebuilt packages do not bundle system tools like `grim`/`slurp`/`wf-recorder`/`wl-clipboard`; install them with your distribution's package manager.
 

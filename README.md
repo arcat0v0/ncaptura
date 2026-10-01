@@ -35,7 +35,7 @@ OCR 功能另外需要系统 Python 3.10–3.13 之一（见第 3 节）。
 
 - **deb**：`sudo dpkg -i ncaptura_*.deb`
 - **rpm**：`sudo dnf install ncaptura-*.rpm`
-- **AppImage**：以便携 CLI 形式提供（不含桌面入口与系统集成），`chmod +x ncaptura-*.AppImage` 后直接命令行调用
+- **tar.gz**：便携二进制包，解压后将 `ncaptura` 放入 `PATH` 即可（不含桌面入口与系统集成）
 
 注意：预编译包不包含 `grim`/`slurp`/`wf-recorder`/`wl-clipboard` 等系统工具，请用发行版包管理器另行安装。
 
