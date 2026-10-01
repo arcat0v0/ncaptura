@@ -127,6 +127,7 @@ OCR 窗口可一键「翻译」当前识别文本；翻译窗口可在标题栏�
 ### 帮助
 
 ```bash
+ncaptura version
 ncaptura help
 ```
 

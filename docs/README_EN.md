@@ -128,6 +128,7 @@ Public instances may be rate-limited; heavy users should point the config file a
 ### Help
 
 ```bash
+ncaptura version
 ncaptura help
 ```
 

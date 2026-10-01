@@ -108,6 +108,10 @@ fn run_cli_command(command: CliCommand) -> Result<(), i32> {
             run_translate_input_window();
             Ok(())
         }
+        CliCommand::Version => {
+            println!("ncaptura {}", env!("CARGO_PKG_VERSION"));
+            Ok(())
+        }
         CliCommand::Help => {
             println!("{}", cli_usage());
             Ok(())
@@ -118,6 +122,9 @@ fn run_cli_command(command: CliCommand) -> Result<(), i32> {
 fn parse_cli_command(args: &[String]) -> Result<CliCommand, String> {
     if args[0] == "help" || args[0] == "--help" || args[0] == "-h" {
         return Ok(CliCommand::Help);
+    }
+    if matches!(args[0].as_str(), "version" | "--version" | "-v" | "-V") {
+        return Ok(CliCommand::Version);
     }
 
     if args[0] == "screenshot" {
@@ -206,6 +213,7 @@ fn cli_usage() -> &'static str {
   ncaptura translate region
   ncaptura translate selection
   ncaptura translate input
+  ncaptura version
   ncaptura help
 
 niri 快捷键示例:
@@ -229,5 +237,19 @@ enum CliCommand {
     TranslateRegion,
     TranslateSelection,
     TranslateInput,
+    Version,
     Help,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_version_spellings() {
+        for arg in ["version", "--version", "-v", "-V"] {
+            let args = vec![arg.to_string()];
+            assert!(matches!(parse_cli_command(&args), Ok(CliCommand::Version)));
+        }
+    }
 }
