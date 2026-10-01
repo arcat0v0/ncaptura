@@ -53,5 +53,5 @@ cargo +stable test -- --ignored translates_via_public_instance               # �
    - 校验 tag 与 `Cargo.toml` 版本一致（不一致即失败）
    - 构建并上传 `ncaptura_<version>_amd64.deb`、`ncaptura-<version>.x86_64.rpm`、`ncaptura-<version>-x86_64.tar.gz` 到 GitHub Releases；deb/rpm 依赖声明分别用 Debian / Fedora 包名，见 `Cargo.toml` 的 `package.metadata.deb` / `package.metadata.generate-rpm`
    - 随后自动更新 AUR 稳定包 `ncaptura`（以 `aur/PKGBUILD` 为模板替换 `pkgver`/`sha256sums` 并推送 AUR 仓库；需要 repo secret `AUR_SSH_PRIVATE_KEY`，未配置则跳过）。`ncaptura-git`（根目录 `PKGBUILD`）跟随 main，无需发版动作
-   **注意**：AUR 信息不写入 `README.md`；README 的用户引导只提 deb / rpm / tar.gz 与源码安装
+   **注意**：README 的安装指引包含仓库自带 PKGBUILD（makepkg）方式；AUR 助手命令（`yay -S ncaptura` 等）在包正式注册到 AUR 之前不写入 README
 5. **发版后验证**：在干净环境用 deb 或 tar.gz 安装，`ncaptura help` 与 `ncaptura ocr` 冒烟通过

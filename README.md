@@ -39,6 +39,18 @@ OCR 功能另外需要系统 Python 3.10–3.13 之一（见第 3 节）。
 
 注意：预编译包不包含 `grim`/`slurp`/`wf-recorder`/`wl-clipboard` 等系统工具，请用发行版包管理器另行安装。
 
+### 通过 PKGBUILD 安装（Arch Linux）
+
+仓库根目录自带 `ncaptura-git` 的 PKGBUILD（跟踪 main 分支），直接构建安装：
+
+```bash
+git clone https://github.com/arcat0v0/ncaptura.git
+cd ncaptura
+makepkg -si
+```
+
+会自动安装依赖并完成构建；卸载用 `sudo pacman -R ncaptura-git`。
+
 ### 从源码安装
 
 ```bash

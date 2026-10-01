@@ -40,6 +40,18 @@ Download the matching format from the [Releases](https://github.com/arcat0v0/nca
 
 Note: prebuilt packages do not bundle system tools like `grim`/`slurp`/`wf-recorder`/`wl-clipboard`; install them with your distribution's package manager.
 
+### Via PKGBUILD (Arch Linux)
+
+The repository ships a `ncaptura-git` PKGBUILD at its root (tracking the main branch):
+
+```bash
+git clone https://github.com/arcat0v0/ncaptura.git
+cd ncaptura
+makepkg -si
+```
+
+This installs dependencies, builds, and installs the package; remove it with `sudo pacman -R ncaptura-git`.
+
 ### From source
 
 ```bash
