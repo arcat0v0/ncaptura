@@ -1,4 +1,4 @@
-# NCaptura CLI 快速指南
+# NCaptura
 
 中文 | [English](docs/README_EN.md)
 
