@@ -4,11 +4,16 @@ use anyhow::{Context, Result, bail};
 
 use super::{Translator, target_language_for};
 
-const DEFAULT_INSTANCES: &[&str] = &[
-    "https://mozhi.ducks.party",
-    "https://mozhi.pussthecat.org",
-    "https://mozhi.canine.tools",
-];
+pub(crate) fn default_instances() -> Vec<String> {
+    [
+        "https://mozhi.ducks.party",
+        "https://mozhi.pussthecat.org",
+        "https://mozhi.canine.tools",
+    ]
+    .iter()
+    .map(|instance| instance.to_string())
+    .collect()
+}
 
 pub struct MozhiTranslator {
     instances: Vec<String>,
@@ -17,17 +22,7 @@ pub struct MozhiTranslator {
 }
 
 impl MozhiTranslator {
-    pub fn from_env() -> Self {
-        let instances = std::env::var("NCAPTURA_MOZHI_URL")
-            .ok()
-            .map(|url| vec![url.trim_end_matches('/').to_string()])
-            .unwrap_or_else(|| {
-                DEFAULT_INSTANCES
-                    .iter()
-                    .map(|instance| instance.to_string())
-                    .collect()
-            });
-        let engine = std::env::var("NCAPTURA_MOZHI_ENGINE").unwrap_or_else(|_| "google".into());
+    pub fn new(instances: Vec<String>, engine: String) -> Self {
         let agent = ureq::Agent::config_builder()
             .timeout_global(Some(Duration::from_secs(10)))
             .build()
@@ -61,8 +56,8 @@ impl MozhiTranslator {
 }
 
 impl Translator for MozhiTranslator {
-    fn translate(&self, text: &str) -> Result<String> {
-        let target = target_language_for(text);
+    fn translate(&self, text: &str, target: Option<&str>) -> Result<String> {
+        let target = target_language_for(text, target);
         let mut errors = Vec::new();
 
         for base in &self.instances {
@@ -126,8 +121,8 @@ mod tests {
     #[test]
     #[ignore = "需要访问公共 mozhi 实例，网络依赖较强"]
     fn translates_via_public_instance() {
-        let translator = super::MozhiTranslator::from_env();
-        let translated = translator.translate("Hello world").unwrap();
+        let translator = super::MozhiTranslator::new(super::default_instances(), "google".into());
+        let translated = translator.translate("Hello world", None).unwrap();
         assert!(translated.contains("你好"));
     }
 }

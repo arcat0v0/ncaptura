@@ -1,6 +1,7 @@
 mod app;
 mod capture;
 mod cli;
+mod config;
 mod ocr;
 mod text;
 mod translate;

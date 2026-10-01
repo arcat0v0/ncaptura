@@ -17,58 +17,41 @@
 - `pactl`：可选，仅在 `--audio` 时用于自动选择系统混音设备
 - `niri`：可选，在 `fullscreen` 模式下用于识别当前聚焦输出，以及让 OCR / 翻译弹窗按所在屏幕自适应尺寸
 
-## 2. 通过 PKGBUILD 安装（Arch Linux / AUR）
+OCR 功能另外需要系统 Python 3.10–3.13 之一（见第 3 节）。
 
-当前仓库提供 `ncaptura-git` 的 `PKGBUILD`，可按以下方式安装。
+## 2. 安装
 
-先安装构建工具：
+### 预编译包（推荐）
 
-```bash
-sudo pacman -S --needed base-devel git
-```
+从 [Releases](https://github.com/arcat0v0/ncaptura/releases) 页面下载对应格式：
 
-### 方式 A：本地 PKGBUILD 构建安装
+- **deb**：`sudo dpkg -i ncaptura_*.deb`
+- **rpm**：`sudo dnf install ncaptura-*.rpm`
+- **AppImage**：以便携 CLI 形式提供（不含桌面入口与系统集成），`chmod +x ncaptura-*.AppImage` 后直接命令行调用
 
-在本仓库根目录执行：
+注意：预编译包不包含 `grim`/`slurp`/`wf-recorder`/`wl-clipboard` 等系统工具，请用发行版包管理器另行安装。
 
-```bash
-makepkg -si
-```
-
-### 方式 B：发布到 AUR 后通过 AUR Helper 安装
-
-当 AUR 包上线后可直接安装：
-
-```bash
-yay -S ncaptura-git
-```
-
-安装完成后可用以下命令验证：
-
-```bash
-ncaptura help
-```
-
-## 3. 快速运行方式
-
-也可以直接用 Cargo 安装到用户目录（`~/.local/bin` 需在 `PATH` 中）：
+### 从源码安装
 
 ```bash
 cargo install --path . --root ~/.local
 ```
 
-如果你还没安装二进制，可直接通过 Cargo 调用：
+确保 `~/.local/bin` 在 `PATH` 中，然后用 `ncaptura help` 验证。
+
+## 3. OCR 初始化
+
+OCR 依赖 PaddleOCR，需要一次性初始化（会在 `~/.local/share/ncaptura/ocr-venv` 创建独立的 Python 虚拟环境，不污染系统 Python）：
 
 ```bash
-cargo run -- screenshot region
-cargo run -- record start region
+ncaptura ocr setup
 ```
 
-如果你已经有 `ncaptura` 可执行文件（例如 `target/release/ncaptura` 放进了 `PATH`），推荐直接使用：
+- 使用**系统自带**的 Python（自动探测 `/usr/bin/python3.13` ~ `3.10`），不引入额外工具链
+- paddlepaddle 官方暂未发布 Python 3.14 的预编译包，因此需要系统中有 3.10–3.13 之一（Arch：`sudo pacman -S python310`）
+- paddlepaddle 锁定 3.2.x：3.3.0/3.3.1 在 CPU 推理时会触发 oneDNN PIR 崩溃（`ConvertPirAttribute2RuntimeAttribute not support`）
 
-```bash
-ncaptura help
-```
+**模型需要额外下载**：首次执行 OCR 识别时，会自动从 PaddleX 模型服务器（`paddle-model-ecology.bj.bcebos.com`）下载推理模型（约百余 MB）到 `~/.local/share/ncaptura/models`，请保持网络畅通；之后识别完全离线。
 
 ## 4. CLI 命令一览
 
@@ -100,39 +83,26 @@ ncaptura record stop
 
 ```bash
 ncaptura ocr
+ncaptura ocr setup
 ncaptura translate region
 ncaptura translate selection
 ncaptura translate input
 ```
 
 - `ocr`：框选区域后调用 PaddleOCR 识别文字，弹出「文字识别」结果窗口
+- `ocr setup`：初始化 / 重建 OCR Python 环境（见第 3 节）
 - `translate region`：框选区域识别文字并翻译
 - `translate selection`：读取鼠标选中的文本（primary selection）并翻译
 - `translate input`：呼出输入翻译窗口，输入文本后回车翻译
 
 结果窗口支持直接编辑文本、「删除换行」整理段落、「复制」到剪贴板（窗口关闭后剪贴板内容仍保留）。
-弹窗为悬浮覆盖层（见第 7 节），按 `Esc` 或右上角按钮关闭；
+OCR 窗口可一键「翻译」当前识别文本；翻译窗口可在标题栏选择目标语言并即时重译。
+弹窗为悬浮覆盖层（见第 8 节），按 `Esc` 或右上角按钮关闭；
 窗口尺寸随所在屏幕自适应：横屏为左图右文，竖屏自动切换为上图下文。
 
 翻译通过 [mozhi](https://codeberg.org/aryak/mozhi) 公共实例完成（聚合 Google 等引擎，免 API key），
-默认在多个实例间自动故障转移；中文内容自动译向英文，其他语言译向中文。可用环境变量调整：
-
-- `NCAPTURA_MOZHI_URL`：指定实例地址（例如自托管的 `http://127.0.0.1:3000`，Arch 可安装 AUR 的 `mozhi-git`）
-- `NCAPTURA_MOZHI_ENGINE`：翻译引擎（默认 `google`，可选 `duckduckgo`、`deepl`、`reverso`、`yandex`、`mymemory` 等）
-- `NCAPTURA_TRANSLATE_TARGET`：覆盖目标语言自动判断
-- `NCAPTURA_TRANSLATE_BACKEND`：翻译后端（默认 `mozhi`，为未来其他后端预留）
-
-公共实例存在限流可能，频繁使用建议自托管实例并设置 `NCAPTURA_MOZHI_URL`。
-
-OCR 依赖独立的 Python 环境（不会污染系统 Python），首次使用前执行：
-
-```bash
-scripts/setup-ocr.sh
-```
-
-脚本通过 `uv` 在 `~/.local/share/ncaptura/ocr-venv` 创建虚拟环境并安装 `paddlepaddle==3.2.2` 与 `paddleocr`。
-注意：paddlepaddle 必须保持 3.2.x，3.3.0/3.3.1 在 CPU 推理时会触发 oneDNN PIR 崩溃（`ConvertPirAttribute2RuntimeAttribute not support`）。
-首次识别会自动下载模型到 `~/.paddlex`。如需自定义 Python 环境，设置 `NCAPTURA_OCR_PYTHON` 指向目标解释器。
+默认在多个实例间自动故障转移；中文内容自动译向英文，其他语言译向中文。
+公共实例存在限流可能，频繁使用建议在配置文件中指向自托管实例（见第 5 节）。
 
 ### 帮助
 
@@ -140,9 +110,45 @@ scripts/setup-ocr.sh
 ncaptura help
 ```
 
-## 5. 输出文件位置
+## 5. 配置文件
 
-默认保存到 `图片目录/NCaptura` 下：
+可选配置文件：`~/.config/ncaptura/config.yaml`（不存在时全部使用缺省值）。示例（各项均为缺省行为，按需取消注释修改）：
+
+```yaml
+# 输出根目录（截图、录屏），支持 ~ 展开
+# 缺省：图片目录/NCaptura（通常为 ~/Pictures/NCaptura）
+# output_dir: ~/Pictures/NCaptura
+
+ocr:
+  # PaddleOCR 环境的 Python 解释器路径
+  # 缺省：~/.local/share/ncaptura/ocr-venv/bin/python
+  # 也可用环境变量 NCAPTURA_OCR_PYTHON 覆盖
+  # python: /path/to/python
+
+  # 模型缓存目录
+  # 缺省：~/.local/share/ncaptura/models
+  # model_dir: ~/.local/share/ncaptura/models
+
+translate:
+  # 翻译后端（当前仅 mozhi，为未来后端预留）
+  # backend: mozhi
+
+  # mozhi 实例地址；缺省为多个公共实例自动故障转移
+  # 自托管示例（Arch 可安装 mozhi-git，默认端口 3000）：
+  # mozhi_url: http://127.0.0.1:3000
+
+  # 翻译引擎：google / duckduckgo / deepl / reverso / yandex / mymemory
+  # engine: google
+
+  # 固定目标语言；缺省按内容自动判断（中文→英文，其他→中文）
+  # target: zh-CN
+```
+
+配置文件解析失败时会提示并回退到缺省值，不会影响使用。
+
+## 6. 输出文件位置
+
+默认保存到 `图片目录/NCaptura` 下（可用 `output_dir` 配置修改）：
 
 - 截图：`~/Pictures/NCaptura/screenshots/`
 - 录屏：`~/Pictures/NCaptura/recordings/`
@@ -152,7 +158,17 @@ ncaptura help
 - `screenshot-region-20260224-213015.png`
 - `recording-fullscreen-20260224-213102.mkv`
 
-## 6. 录屏状态文件（CLI）
+应用自身的文件按 XDG 目录规范组织：
+
+| 内容 | 位置 |
+| --- | --- |
+| 配置文件 | `~/.config/ncaptura/config.yaml` |
+| OCR Python 环境 | `~/.local/share/ncaptura/ocr-venv/` |
+| OCR 模型 | `~/.local/share/ncaptura/models/` |
+| OCR 辅助脚本（可删，自动重建） | `~/.cache/ncaptura/` |
+| 录屏状态文件 | `~/.local/state/ncaptura/recording.json` |
+
+## 7. 录屏状态文件（CLI）
 
 CLI 录屏启动后会写入状态文件，用于后续 `record stop`：
 
@@ -160,7 +176,7 @@ CLI 录屏启动后会写入状态文件，用于后续 `record stop`：
 
 如果你的系统设置了 `XDG_STATE_HOME`，则会使用对应状态目录。
 
-## 7. niri 快捷键示例
+## 8. niri 快捷键示例
 
 可在 niri 配置中直接绑定：
 
@@ -180,7 +196,7 @@ OCR / 翻译弹窗通过 wlr-layer-shell 协议以覆盖层形式悬浮在屏幕
 在 niri 等支持该协议的合成器上不会被平铺，无需任何窗口规则配置；
 在不支持 layer-shell 的桌面上则回退为普通窗口。
 
-## 8. 常见问题
+## 9. 常见问题
 
 ### `record stop` 提示无法读取状态文件
 
@@ -196,6 +212,9 @@ OCR / 翻译弹窗通过 wlr-layer-shell 协议以覆盖层形式悬浮在屏幕
 
 ### OCR 提示「未找到 OCR Python 环境」
 
-先执行 `scripts/setup-ocr.sh` 创建识别环境（依赖 `uv`），或通过 `NCAPTURA_OCR_PYTHON` 指定已有的 Python 解释器。
+执行 `ncaptura ocr setup` 完成初始化；需要系统 Python 3.10–3.13。
 首次识别会下载模型，耗时较长属正常现象。
 
+### 翻译失败或超时
+
+公共 mozhi 实例可能限流，稍后再试，或在 `config.yaml` 中配置 `translate.mozhi_url` 指向自托管实例。

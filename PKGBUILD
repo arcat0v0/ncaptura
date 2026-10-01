@@ -12,7 +12,7 @@ makedepends=('cargo' 'git' 'pkgconf')
 optdepends=(
   'libpulse: pactl support for --audio auto device selection'
   'niri: focused output detection in fullscreen mode'
-  'uv: required by setup-ocr.sh to create the PaddleOCR environment'
+  'python310: system interpreter used by `ncaptura ocr setup` (any of python310-313 works)'
 )
 provides=("${_pkgname}")
 conflicts=("${_pkgname}")
@@ -48,6 +48,4 @@ package() {
   if [[ -f README.md ]]; then
     install -Dm644 README.md "${pkgdir}/usr/share/doc/${_pkgname}/README.md"
   fi
-
-  install -Dm755 "scripts/setup-ocr.sh" "${pkgdir}/usr/share/${_pkgname}/setup-ocr.sh"
 }

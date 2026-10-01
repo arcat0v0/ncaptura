@@ -20,7 +20,23 @@ pub struct ResultWindowConfig {
     pub error_title: &'static str,
     pub namespace: &'static str,
     pub left: LeftPane,
+    pub language_selector: bool,
+    pub translate_button: bool,
 }
+
+const TARGET_LANGUAGES: &[(&str, &str)] = &[
+    ("", "自动"),
+    ("zh-CN", "中文"),
+    ("en", "English"),
+    ("ja", "日本語"),
+    ("ko", "한국어"),
+    ("fr", "Français"),
+    ("de", "Deutsch"),
+    ("ru", "Русский"),
+    ("es", "Español"),
+];
+
+type SharedTask = std::sync::Arc<dyn Fn(Option<String>) -> anyhow::Result<String> + Send + Sync>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct WindowLayout {
@@ -87,13 +103,15 @@ pub(crate) fn target_monitor_size() -> Option<(i32, i32)> {
     Some((geometry.width(), geometry.height()))
 }
 
-pub fn build_result_window<F>(
+pub fn build_result_window<F, G>(
     app: &adw::Application,
     config: ResultWindowConfig,
     task: F,
+    on_translate: Option<G>,
 ) -> adw::ApplicationWindow
 where
-    F: FnOnce() -> anyhow::Result<String> + Send + 'static,
+    F: Fn(Option<String>) -> anyhow::Result<String> + Send + Sync + 'static,
+    G: Fn(&adw::Application, String) + 'static,
 {
     let layout = WindowLayout::for_monitor(target_monitor_size());
     let window = adw::ApplicationWindow::builder()
@@ -143,40 +161,46 @@ where
         .build();
 
     paned.set_start_child(Some(&build_left_pane(&config)));
-    let (right_pane, stack, text_view) = build_right_pane(&config, &toast_overlay);
+    let (right_pane, stack, text_view) =
+        build_right_pane(&config, &toast_overlay, app, on_translate);
     paned.set_end_child(Some(&right_pane));
 
     toolbar_view.set_content(Some(&paned));
     toast_overlay.set_child(Some(&toolbar_view));
     window.set_content(Some(&toast_overlay));
 
-    let (sender, receiver) = async_channel::bounded::<Result<String, String>>(1);
-    std::thread::spawn(move || {
-        let outcome = task().map_err(|err| err.to_string());
-        let _ = sender.send_blocking(outcome);
-    });
+    let task: SharedTask = std::sync::Arc::new(task);
 
-    let error_title = config.error_title;
-    gtk::glib::spawn_future_local(async move {
-        if let Ok(outcome) = receiver.recv().await {
-            match outcome {
-                Ok(text) => {
-                    text_view.buffer().set_text(&text);
-                    stack.set_visible_child_name("result");
-                }
-                Err(message) => {
-                    let status = adw::StatusPage::builder()
-                        .icon_name("dialog-error-symbolic")
-                        .title(error_title)
-                        .description(&message)
-                        .vexpand(true)
-                        .build();
-                    stack.add_named(&status, Some("error"));
-                    stack.set_visible_child_name("error");
-                }
-            }
-        }
-    });
+    if config.language_selector {
+        let labels: Vec<&str> = TARGET_LANGUAGES.iter().map(|(_, label)| *label).collect();
+        let dropdown = gtk::DropDown::from_strings(&labels);
+        dropdown.set_tooltip_text(Some("目标语言"));
+        let stack_for_lang = stack.clone();
+        let text_for_lang = text_view.clone();
+        let task_for_lang = task.clone();
+        let error_title = config.error_title;
+        dropdown.connect_selected_notify(move |dropdown| {
+            let index = dropdown.selected() as usize;
+            let Some((code, _)) = TARGET_LANGUAGES.get(index) else {
+                return;
+            };
+            let target = if code.is_empty() {
+                None
+            } else {
+                Some(code.to_string())
+            };
+            start_task(
+                &stack_for_lang,
+                &text_for_lang,
+                error_title,
+                task_for_lang.clone(),
+                target,
+            );
+        });
+        header.pack_end(&dropdown);
+    }
+
+    start_task(&stack, &text_view, config.error_title, task, None);
 
     let key_controller = gtk::EventControllerKey::new();
     let window_for_key = window.clone();
@@ -192,6 +216,49 @@ where
     window.present();
     window
 }
+
+fn start_task(
+    stack: &gtk::Stack,
+    text_view: &gtk::TextView,
+    error_title: &'static str,
+    task: SharedTask,
+    target: Option<String>,
+) {
+    stack.set_visible_child_name("loading");
+
+    let (sender, receiver) = async_channel::bounded::<Result<String, String>>(1);
+    std::thread::spawn(move || {
+        let outcome = task(target).map_err(|err| err.to_string());
+        let _ = sender.send_blocking(outcome);
+    });
+
+    let stack = stack.clone();
+    let text_view = text_view.clone();
+    gtk::glib::spawn_future_local(async move {
+        if let Ok(outcome) = receiver.recv().await {
+            match outcome {
+                Ok(text) => {
+                    text_view.buffer().set_text(&text);
+                    stack.set_visible_child_name("result");
+                }
+                Err(message) => {
+                    if let Some(old) = stack.child_by_name("error") {
+                        stack.remove(&old);
+                    }
+                    let status = adw::StatusPage::builder()
+                        .icon_name("dialog-error-symbolic")
+                        .title(error_title)
+                        .description(&message)
+                        .vexpand(true)
+                        .build();
+                    stack.add_named(&status, Some("error"));
+                    stack.set_visible_child_name("error");
+                }
+            }
+        }
+    });
+}
+
 fn build_left_pane(config: &ResultWindowConfig) -> gtk::Box {
     let pane = gtk::Box::builder()
         .orientation(Orientation::Vertical)
@@ -246,10 +313,15 @@ fn build_left_pane(config: &ResultWindowConfig) -> gtk::Box {
     pane
 }
 
-fn build_right_pane(
+fn build_right_pane<G>(
     config: &ResultWindowConfig,
     toast_overlay: &adw::ToastOverlay,
-) -> (gtk::Box, gtk::Stack, gtk::TextView) {
+    app: &adw::Application,
+    on_translate: Option<G>,
+) -> (gtk::Box, gtk::Stack, gtk::TextView)
+where
+    G: Fn(&adw::Application, String) + 'static,
+{
     let pane = gtk::Box::builder()
         .orientation(Orientation::Vertical)
         .spacing(12)
@@ -313,6 +385,36 @@ fn build_right_pane(
         .margin_bottom(24)
         .margin_end(24)
         .build();
+
+    if config.translate_button
+        && let Some(handler) = on_translate
+    {
+        let translate_button = gtk::Button::builder()
+            .child(
+                &adw::ButtonContent::builder()
+                    .icon_name("preferences-desktop-locale-symbolic")
+                    .label("翻译")
+                    .build(),
+            )
+            .build();
+        translate_button.add_css_class("pill");
+        let app_for_translate = app.clone();
+        let text_for_translate = text_view.clone();
+        let overlay = toast_overlay.clone();
+        translate_button.connect_clicked(move |_| {
+            let buffer = text_for_translate.buffer();
+            let text = buffer
+                .text(&buffer.start_iter(), &buffer.end_iter(), false)
+                .trim()
+                .to_string();
+            if text.is_empty() {
+                overlay.add_toast(adw::Toast::new("暂无可翻译的内容"));
+                return;
+            }
+            handler(&app_for_translate, text);
+        });
+        footer.append(&translate_button);
+    }
 
     let strip_button = gtk::Button::builder()
         .child(

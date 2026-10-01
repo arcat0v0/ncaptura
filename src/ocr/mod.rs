@@ -26,10 +26,17 @@ impl PaddleOcrEngine {
     pub fn resolve() -> Result<Self> {
         let python = std::env::var_os("NCAPTURA_OCR_PYTHON")
             .map(PathBuf::from)
+            .or_else(|| {
+                crate::config::get()
+                    .ocr
+                    .python
+                    .as_ref()
+                    .map(|path| crate::config::expand_tilde(path))
+            })
             .or_else(default_venv_python)
             .filter(|path| path.is_file())
             .context(
-                "未找到 OCR Python 环境，请先执行 scripts/setup-ocr.sh，或设置 NCAPTURA_OCR_PYTHON",
+                "未找到 OCR Python 环境，请先执行 `ncaptura ocr setup`，或设置 NCAPTURA_OCR_PYTHON",
             )?;
 
         let helper = materialize_helper()?;
@@ -41,6 +48,7 @@ impl PaddleOcrEngine {
         let output = Command::new(&self.python)
             .arg(&self.helper)
             .arg(image)
+            .env("PADDLE_PDX_CACHE_HOME", model_dir())
             .output()
             .context("无法启动 OCR 识别进程")?;
 
@@ -61,8 +69,113 @@ impl PaddleOcrEngine {
     }
 }
 
+pub fn setup_ocr_environment() -> Result<()> {
+    let (program, version) = find_system_python()?;
+    eprintln!("==> 使用系统 Python: {program} ({version})");
+
+    let venv_dir = default_venv_dir().context("无法确定 OCR 环境目录")?;
+    let venv_python = venv_dir.join("bin/python");
+
+    eprintln!("==> 创建 Python 虚拟环境: {}", venv_dir.display());
+    run_inherited(
+        Command::new(&program)
+            .args(["-m", "venv", "--clear"])
+            .arg(&venv_dir),
+        "创建虚拟环境失败",
+    )?;
+
+    eprintln!("==> 安装 paddlepaddle 3.2.2 与 paddleocr");
+    run_inherited(
+        Command::new(&venv_python).args([
+            "-m",
+            "pip",
+            "install",
+            "paddlepaddle==3.2.2",
+            "paddleocr>=3,<4",
+        ]),
+        "安装 PaddleOCR 失败",
+    )?;
+
+    let models = model_dir();
+    fs::create_dir_all(&models).context("无法创建模型目录")?;
+    run_inherited(
+        Command::new(&venv_python)
+            .args(["-c", "import paddle, paddleocr"])
+            .env("PADDLE_PDX_CACHE_HOME", &models),
+        "OCR 环境校验失败",
+    )?;
+
+    eprintln!("OCR 环境已就绪: {}", venv_dir.display());
+    eprintln!("模型将在首次识别时下载到: {}", models.display());
+    Ok(())
+}
+
+fn find_system_python() -> Result<(String, String)> {
+    for candidate in [
+        "/usr/bin/python3.13",
+        "/usr/bin/python3.12",
+        "/usr/bin/python3.11",
+        "/usr/bin/python3.10",
+        "/usr/bin/python3",
+    ] {
+        let Ok(output) = Command::new(candidate)
+            .args([
+                "-c",
+                "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')",
+            ])
+            .output()
+        else {
+            continue;
+        };
+        if !output.status.success() {
+            continue;
+        }
+
+        let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if supported_python_version(&version) {
+            return Ok((candidate.to_string(), version));
+        }
+    }
+
+    bail!(
+        "未找到可用的系统 Python（需要 3.10–3.13）。\
+        paddlepaddle 官方暂未发布 Python 3.14 的预编译包，\
+        请先安装 python3.10–3.13 之一（如 sudo pacman -S python310）"
+    )
+}
+
+fn supported_python_version(version: &str) -> bool {
+    let Some((major, minor)) = version.split_once('.') else {
+        return false;
+    };
+    major == "3" && matches!(minor.parse::<u32>(), Ok(10..=13))
+}
+
+pub fn model_dir() -> PathBuf {
+    if let Some(configured) = &crate::config::get().ocr.model_dir {
+        return crate::config::expand_tilde(configured);
+    }
+    dirs::data_dir()
+        .map(|dir| dir.join("ncaptura/models"))
+        .unwrap_or_else(|| PathBuf::from("~/.local/share/ncaptura/models"))
+}
+
+fn run_inherited(command: &mut Command, context_message: &str) -> Result<()> {
+    let status = command
+        .status()
+        .with_context(|| format!("{context_message}: 无法启动命令"))?;
+    if !status.success() {
+        bail!("{context_message}: 退出码 {}", status);
+    }
+    Ok(())
+}
+
+fn default_venv_dir() -> Option<PathBuf> {
+    dirs::data_dir().map(|dir| dir.join("ncaptura/ocr-venv"))
+}
+
 fn default_venv_python() -> Option<PathBuf> {
-    dirs::data_dir().map(|dir| dir.join("ncaptura/ocr-venv/bin/python"))
+    default_venv_dir().map(|dir| dir.join("bin/python"))
 }
 
 fn materialize_helper() -> Result<PathBuf> {

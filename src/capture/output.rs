@@ -15,6 +15,10 @@ pub(crate) fn build_output_path(kind_dir: &str, prefix: &str, extension: &str) -
 }
 
 fn base_output_dir() -> Result<PathBuf> {
+    if let Some(configured) = &crate::config::get().output_dir {
+        return Ok(crate::config::expand_tilde(configured));
+    }
+
     if let Some(pictures_dir) = dirs::picture_dir() {
         return Ok(pictures_dir.join("NCaptura"));
     }

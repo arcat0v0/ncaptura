@@ -67,6 +67,13 @@ fn run_cli_command(command: CliCommand) -> Result<(), i32> {
                 Err(1)
             }
         },
+        CliCommand::OcrSetup => match crate::ocr::setup_ocr_environment() {
+            Ok(()) => Ok(()),
+            Err(err) => {
+                eprintln!("OCR 环境初始化失败: {err:#}");
+                Err(1)
+            }
+        },
         CliCommand::Ocr => match take_screenshot(CaptureTarget::Region) {
             Ok(path) => {
                 run_ocr_window(path);
@@ -150,11 +157,14 @@ fn parse_cli_command(args: &[String]) -> Result<CliCommand, String> {
     }
 
     if args[0] == "ocr" {
-        if args.len() != 1 {
-            return Err("ocr 命令格式错误".to_string());
+        if args.len() == 1 {
+            return Ok(CliCommand::Ocr);
+        }
+        if args.len() == 2 && args[1] == "setup" {
+            return Ok(CliCommand::OcrSetup);
         }
 
-        return Ok(CliCommand::Ocr);
+        return Err("ocr 命令格式错误".to_string());
     }
 
     if args[0] == "translate" {
@@ -192,6 +202,7 @@ fn cli_usage() -> &'static str {
   ncaptura record start fullscreen [--audio]
   ncaptura record stop
   ncaptura ocr
+  ncaptura ocr setup
   ncaptura translate region
   ncaptura translate selection
   ncaptura translate input
@@ -214,6 +225,7 @@ enum CliCommand {
     RecordStart { target: CaptureTarget, audio: bool },
     RecordStop,
     Ocr,
+    OcrSetup,
     TranslateRegion,
     TranslateSelection,
     TranslateInput,

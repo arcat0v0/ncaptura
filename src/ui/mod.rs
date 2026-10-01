@@ -32,40 +32,59 @@ pub fn run_ocr_window(image: PathBuf) {
             error_title: "识别失败",
             namespace: "ncaptura-ocr",
             left: LeftPane::Screenshot(image.clone()),
+            language_selector: false,
+            translate_button: true,
         };
         let task_image = image.clone();
-        build_result_window(app, config, move || recognize_text(&task_image));
+        build_result_window(
+            app,
+            config,
+            move |_| recognize_text(&task_image),
+            Some(show_translate_window),
+        );
     });
 }
 
 pub fn run_translate_selection_window(source: String) {
     run_tool_window("translate", move |app| {
-        let config = translate_config(LeftPane::SourceText(source.clone()));
-        let task_source = source.clone();
-        build_result_window(app, config, move || {
-            default_translator().translate(&task_source)
-        });
+        show_translate_window(app, source.clone());
     });
 }
 
 pub fn run_translate_region_window(image: PathBuf) {
     run_tool_window("translate", move |app| {
         let config = translate_config(LeftPane::Screenshot(image.clone()));
+        let translator = default_translator();
         let task_image = image.clone();
-        build_result_window(app, config, move || {
-            let text = recognize_text(&task_image)?;
-            default_translator().translate(&text)
-        });
+        build_result_window(
+            app,
+            config,
+            move |target| {
+                let text = recognize_text(&task_image)?;
+                translator.translate(&text, target.as_deref())
+            },
+            None::<fn(&adw::Application, String)>,
+        );
     });
 }
 
 pub fn run_translate_input_window() {
     run_tool_window("translate-input", move |app| {
         build_translate_input_window(app, move |app, text| {
-            let config = translate_config(LeftPane::SourceText(text.clone()));
-            build_result_window(app, config, move || default_translator().translate(&text));
+            show_translate_window(app, text);
         });
     });
+}
+
+fn show_translate_window(app: &adw::Application, source: String) {
+    let config = translate_config(LeftPane::SourceText(source.clone()));
+    let translator = default_translator();
+    build_result_window(
+        app,
+        config,
+        move |target| translator.translate(&source, target.as_deref()),
+        None::<fn(&adw::Application, String)>,
+    );
 }
 
 fn translate_config(left: LeftPane) -> ResultWindowConfig {
@@ -77,9 +96,11 @@ fn translate_config(left: LeftPane) -> ResultWindowConfig {
         },
         right_label: "翻译结果",
         loading_label: "正在翻译…",
-        namespace: "ncaptura-translate",
         error_title: "翻译失败",
+        namespace: "ncaptura-translate",
         left,
+        language_selector: true,
+        translate_button: false,
     }
 }
 
