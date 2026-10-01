@@ -20,7 +20,7 @@ use result_window::{LeftPane, ResultWindowConfig, apply_result_window_css, build
 use translate_input::build_translate_input_window;
 
 use crate::ocr::PaddleOcrEngine;
-use crate::translate::{Translator, default_translator};
+use crate::translate::default_translator;
 
 pub fn run_ocr_window(image: PathBuf) {
     run_tool_window("ocr", move |app| {

@@ -37,11 +37,10 @@ fn join_lines(lines: &[&str]) -> String {
         }
         output.push_str(line);
     }
-
     output
 }
 
-fn is_cjk_char(c: char) -> bool {
+pub(crate) fn is_cjk_char(c: char) -> bool {
     matches!(c,
         '\u{3400}'..='\u{4DBF}'
         | '\u{4E00}'..='\u{9FFF}'

@@ -106,13 +106,23 @@ ncaptura translate input
 ```
 
 - `ocr`：框选区域后调用 PaddleOCR 识别文字，弹出「文字识别」结果窗口
-- `translate region`：框选区域识别文字并翻译（翻译 API 尚未接入，会提示未接入）
+- `translate region`：框选区域识别文字并翻译
 - `translate selection`：读取鼠标选中的文本（primary selection）并翻译
 - `translate input`：呼出输入翻译窗口，输入文本后回车翻译
 
 结果窗口支持直接编辑文本、「删除换行」整理段落、「复制」到剪贴板（窗口关闭后剪贴板内容仍保留）。
 弹窗为悬浮覆盖层（见第 7 节），按 `Esc` 或右上角按钮关闭；
 窗口尺寸随所在屏幕自适应：横屏为左图右文，竖屏自动切换为上图下文。
+
+翻译通过 [mozhi](https://codeberg.org/aryak/mozhi) 公共实例完成（聚合 Google 等引擎，免 API key），
+默认在多个实例间自动故障转移；中文内容自动译向英文，其他语言译向中文。可用环境变量调整：
+
+- `NCAPTURA_MOZHI_URL`：指定实例地址（例如自托管的 `http://127.0.0.1:3000`，Arch 可安装 AUR 的 `mozhi-git`）
+- `NCAPTURA_MOZHI_ENGINE`：翻译引擎（默认 `google`，可选 `duckduckgo`、`deepl`、`reverso`、`yandex`、`mymemory` 等）
+- `NCAPTURA_TRANSLATE_TARGET`：覆盖目标语言自动判断
+- `NCAPTURA_TRANSLATE_BACKEND`：翻译后端（默认 `mozhi`，为未来其他后端预留）
+
+公共实例存在限流可能，频繁使用建议自托管实例并设置 `NCAPTURA_MOZHI_URL`。
 
 OCR 依赖独立的 Python 环境（不会污染系统 Python），首次使用前执行：
 
