@@ -1,20 +1,30 @@
 # NCaptura CLI 快速指南
 
+中文 | [English](docs/README_EN.md)
+
 本项目是一个基于 GTK4 + Libadwaita 的截图/录屏/OCR/翻译工具，除了图形界面，也支持通过 CLI 快速调用各项能力。
 
 这份文档聚焦 CLI 使用方式，方便你直接绑定快捷键或在脚本中调用。
 
-当前版本：`0.1.0`
+## 支持的功能
+
+- **截图**：区域框选 / 全屏（聚焦输出），自动保存到图片目录
+- **录屏**：区域 / 全屏录制，可选系统音频，右上角 HUD 可随时暂停或停止
+- **截图 OCR**：框选屏幕区域，基于 PaddleOCR（Paddle 推理模型，首次识别时自动下载）高精度识别中英文文字
+- **划词翻译**：鼠标选中文本后按下快捷键即可翻译
+- **输入翻译**：快捷键呼出翻译窗口，输入文本后回车翻译
+- **截图翻译**：框选屏幕区域，识别文字并翻译为目标语言
+- **结果弹窗**：Libadwaita 风格悬浮窗承载识别 / 翻译结果，支持直接编辑、删除换行、复制文本、切换目标语言；窗口随所在屏幕方向自适应布局
 
 ## 1. 环境要求
 
-推荐在 Wayland 会话下使用，并确保以下命令可用：
+推荐在 Wayland 会话下使用。运行依赖以下软件包（Arch 包名）：
 
 - `grim`：截图
 - `slurp`：区域选择（`region` 目标需要）
 - `wf-recorder`：录屏
 - `wl-clipboard`：剪贴板读写（复制结果、读取划词选中文本）
-- `pactl`：可选，仅在 `--audio` 时用于自动选择系统混音设备
+- `libpulse`：可选，仅在 `--audio` 时用于自动选择系统混音设备（pactl）
 - `niri`：可选，在 `fullscreen` 模式下用于识别当前聚焦输出，以及让 OCR / 翻译弹窗按所在屏幕自适应尺寸
 
 OCR 功能另外需要系统 Python 3.10–3.13 之一（见第 3 节）。
@@ -41,7 +51,7 @@ cargo install --path . --root ~/.local
 
 ## 3. OCR 初始化
 
-OCR 依赖 PaddleOCR，需要一次性初始化（会在 `~/.local/share/ncaptura/ocr-venv` 创建独立的 Python 虚拟环境，不污染系统 Python）：
+OCR 识别基于 PaddleOCR 及 Paddle 推理模型（PP-OCR 系列），需要一次性初始化（会在 `~/.local/share/ncaptura/ocr-venv` 创建独立的 Python 虚拟环境，不污染系统 Python）：
 
 ```bash
 ncaptura ocr setup
