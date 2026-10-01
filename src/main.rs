@@ -1,6 +1,9 @@
 mod app;
 mod capture;
 mod cli;
+mod ocr;
+mod text;
+mod translate;
 mod ui;
 
 fn main() {

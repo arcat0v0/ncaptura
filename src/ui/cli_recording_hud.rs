@@ -6,7 +6,7 @@ use adw::prelude::*;
 use gtk::{Align, Box as GtkBox, Button, CssProvider, Label, Orientation};
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 use nix::errno::Errno;
-use nix::sys::signal::{kill, Signal};
+use nix::sys::signal::{Signal, kill};
 use nix::unistd::Pid;
 
 use crate::capture::{self, CliRecordingState};

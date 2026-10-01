@@ -3,15 +3,16 @@ _pkgname=ncaptura
 _pkgbasever=0.1.0
 pkgver=${_pkgbasever}.r0.g0000000
 pkgrel=1
-pkgdesc="GTK4 + Libadwaita screenshot and recording tool"
+pkgdesc="GTK4 + Libadwaita screenshot, recording, OCR and translation tool"
 arch=('x86_64')
 url="https://github.com/arcat0v0/ncaptura"
 license=('unknown')
-depends=('gcc-libs' 'glibc' 'gtk4' 'libadwaita' 'grim' 'slurp' 'wf-recorder')
+depends=('gcc-libs' 'glibc' 'gtk4' 'libadwaita' 'grim' 'slurp' 'wf-recorder' 'wl-clipboard')
 makedepends=('cargo' 'git' 'pkgconf')
 optdepends=(
   'libpulse: pactl support for --audio auto device selection'
   'niri: focused output detection in fullscreen mode'
+  'uv: required by setup-ocr.sh to create the PaddleOCR environment'
 )
 provides=("${_pkgname}")
 conflicts=("${_pkgname}")
@@ -47,4 +48,6 @@ package() {
   if [[ -f README.md ]]; then
     install -Dm644 README.md "${pkgdir}/usr/share/doc/${_pkgname}/README.md"
   fi
+
+  install -Dm755 "scripts/setup-ocr.sh" "${pkgdir}/usr/share/${_pkgname}/setup-ocr.sh"
 }

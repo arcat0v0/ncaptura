@@ -8,6 +8,8 @@ mod windows;
 use std::path::PathBuf;
 use std::process::Child;
 
+pub use command_utils::{copy_text_to_clipboard, primary_selection_text};
+
 pub use recording::{
     current_cli_recording_state, start_recording, start_recording_detached, stop_recording,
     stop_recording_detached, toggle_recording_pause,

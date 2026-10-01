@@ -1,6 +1,6 @@
 # NCaptura CLI 快速指南
 
-本项目是一个基于 GTK4 + Libadwaita 的截图/录屏工具，除了图形界面，也支持通过 CLI 快速调用截图与录屏能力。
+本项目是一个基于 GTK4 + Libadwaita 的截图/录屏/OCR/翻译工具，除了图形界面，也支持通过 CLI 快速调用各项能力。
 
 这份文档聚焦 CLI 使用方式，方便你直接绑定快捷键或在脚本中调用。
 
@@ -13,6 +13,7 @@
 - `grim`：截图
 - `slurp`：区域选择（`region` 目标需要）
 - `wf-recorder`：录屏
+- `wl-clipboard`：剪贴板读写（复制结果、读取划词选中文本）
 - `pactl`：可选，仅在 `--audio` 时用于自动选择系统混音设备
 - `niri`：可选，在 `fullscreen` 模式下用于识别当前聚焦输出
 
@@ -89,6 +90,33 @@ ncaptura record stop
 - `--audio`：开启音频录制
 - `record stop`：停止当前由 CLI 启动的录屏
 
+### OCR 与翻译
+
+
+```bash
+ncaptura ocr
+ncaptura translate region
+ncaptura translate selection
+ncaptura translate input
+```
+
+- `ocr`：框选区域后调用 PaddleOCR 识别文字，弹出「文字识别」结果窗口
+- `translate region`：框选区域识别文字并翻译（翻译 API 尚未接入，会提示未接入）
+- `translate selection`：读取鼠标选中的文本（primary selection）并翻译
+- `translate input`：呼出输入翻译窗口，输入文本后回车翻译
+
+结果窗口支持直接编辑文本、「删除换行」整理段落、「复制」到剪贴板。
+
+OCR 依赖独立的 Python 环境（不会污染系统 Python），首次使用前执行：
+
+```bash
+scripts/setup-ocr.sh
+```
+
+脚本通过 `uv` 在 `~/.local/share/ncaptura/ocr-venv` 创建虚拟环境并安装 `paddlepaddle==3.2.2` 与 `paddleocr`。
+注意：paddlepaddle 必须保持 3.2.x，3.3.0/3.3.1 在 CPU 推理时会触发 oneDNN PIR 崩溃（`ConvertPirAttribute2RuntimeAttribute not support`）。
+首次识别会自动下载模型到 `~/.paddlex`。如需自定义 Python 环境，设置 `NCAPTURA_OCR_PYTHON` 指向目标解释器。
+
 ### 帮助
 
 ```bash
@@ -125,6 +153,20 @@ Mod+Shift+F    { spawn "ncaptura" "screenshot" "fullscreen"; }
 Mod+Shift+R    { spawn "ncaptura" "record" "start" "region"; }
 Mod+Shift+A    { spawn "ncaptura" "record" "start" "region" "--audio"; }
 Mod+Shift+E    { spawn "ncaptura" "record" "stop"; }
+Mod+Shift+O    { spawn "ncaptura" "ocr"; }
+Mod+Shift+T    { spawn "ncaptura" "translate" "region"; }
+Mod+Shift+Y    { spawn "ncaptura" "translate" "selection"; }
+Mod+Shift+I    { spawn "ncaptura" "translate" "input"; }
+```
+
+OCR / 翻译弹窗的 app-id 分别是 `io.ncaptura.ocr`、`io.ncaptura.translate`、`io.ncaptura.translate-input`。
+在 niri 平铺布局下如希望它们以浮窗形式打开，可添加窗口规则：
+
+```kdl
+window-rule {
+    match app-id=r#"^io\.ncaptura\.(ocr|translate|translate-input)$"#
+    open-floating true
+}
 ```
 
 ## 8. 常见问题

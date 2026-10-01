@@ -1,9 +1,13 @@
 use std::env;
 
 use crate::capture::{
-    CaptureTarget, start_recording_detached, stop_recording_detached, take_screenshot,
+    CaptureTarget, primary_selection_text, start_recording_detached, stop_recording_detached,
+    take_screenshot,
 };
-use crate::ui::run_cli_recording_hud;
+use crate::ui::{
+    run_cli_recording_hud, run_ocr_window, run_translate_input_window, run_translate_region_window,
+    run_translate_selection_window,
+};
 
 pub fn handle_cli_if_requested() -> Result<(), i32> {
     let args: Vec<String> = env::args().skip(1).collect();
@@ -63,6 +67,40 @@ fn run_cli_command(command: CliCommand) -> Result<(), i32> {
                 Err(1)
             }
         },
+        CliCommand::Ocr => match take_screenshot(CaptureTarget::Region) {
+            Ok(path) => {
+                run_ocr_window(path);
+                Ok(())
+            }
+            Err(err) => {
+                eprintln!("截图失败: {err}");
+                Err(1)
+            }
+        },
+        CliCommand::TranslateRegion => match take_screenshot(CaptureTarget::Region) {
+            Ok(path) => {
+                run_translate_region_window(path);
+                Ok(())
+            }
+            Err(err) => {
+                eprintln!("截图失败: {err}");
+                Err(1)
+            }
+        },
+        CliCommand::TranslateSelection => match primary_selection_text() {
+            Ok(text) => {
+                run_translate_selection_window(text);
+                Ok(())
+            }
+            Err(err) => {
+                eprintln!("{err}");
+                Err(1)
+            }
+        },
+        CliCommand::TranslateInput => {
+            run_translate_input_window();
+            Ok(())
+        }
         CliCommand::Help => {
             println!("{}", cli_usage());
             Ok(())
@@ -111,6 +149,27 @@ fn parse_cli_command(args: &[String]) -> Result<CliCommand, String> {
         return Err("record 命令格式错误".to_string());
     }
 
+    if args[0] == "ocr" {
+        if args.len() != 1 {
+            return Err("ocr 命令格式错误".to_string());
+        }
+
+        return Ok(CliCommand::Ocr);
+    }
+
+    if args[0] == "translate" {
+        if args.len() != 2 {
+            return Err("translate 命令格式错误".to_string());
+        }
+
+        return match args[1].as_str() {
+            "region" => Ok(CliCommand::TranslateRegion),
+            "selection" => Ok(CliCommand::TranslateSelection),
+            "input" => Ok(CliCommand::TranslateInput),
+            other => Err(format!("不支持的翻译方式: {other}")),
+        };
+    }
+
     Err("未知命令".to_string())
 }
 
@@ -132,6 +191,10 @@ fn cli_usage() -> &'static str {
   ncaptura record start region [--audio]
   ncaptura record start fullscreen [--audio]
   ncaptura record stop
+  ncaptura ocr
+  ncaptura translate region
+  ncaptura translate selection
+  ncaptura translate input
   ncaptura help
 
 niri 快捷键示例:
@@ -139,12 +202,20 @@ niri 快捷键示例:
   Mod+Shift+F    { spawn \"ncaptura\" \"screenshot\" \"fullscreen\"; }
   Mod+Shift+R    { spawn \"ncaptura\" \"record\" \"start\" \"region\"; }
   Mod+Shift+A    { spawn \"ncaptura\" \"record\" \"start\" \"region\" \"--audio\"; }
-  Mod+Shift+E    { spawn \"ncaptura\" \"record\" \"stop\"; }"
+  Mod+Shift+E    { spawn \"ncaptura\" \"record\" \"stop\"; }
+  Mod+Shift+O    { spawn \"ncaptura\" \"ocr\"; }
+  Mod+Shift+T    { spawn \"ncaptura\" \"translate\" \"region\"; }
+  Mod+Shift+Y    { spawn \"ncaptura\" \"translate\" \"selection\"; }
+  Mod+Shift+I    { spawn \"ncaptura\" \"translate\" \"input\"; }"
 }
 
 enum CliCommand {
     Screenshot { target: CaptureTarget },
     RecordStart { target: CaptureTarget, audio: bool },
     RecordStop,
+    Ocr,
+    TranslateRegion,
+    TranslateSelection,
+    TranslateInput,
     Help,
 }
