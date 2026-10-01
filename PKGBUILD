@@ -11,7 +11,6 @@ depends=('gcc-libs' 'glibc' 'gtk4' 'libadwaita' 'grim' 'slurp' 'wf-recorder' 'wl
 makedepends=('cargo' 'git' 'pkgconf')
 optdepends=(
   'libpulse: pactl support for --audio auto device selection'
-  'niri: focused output detection in fullscreen mode'
   'python310: system interpreter used by `ncaptura ocr setup` (any of python310-313 works)'
 )
 provides=("${_pkgname}")

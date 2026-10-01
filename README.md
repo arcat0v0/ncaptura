@@ -24,8 +24,6 @@
 - `slurp`：区域选择（`region` 目标需要）
 - `wf-recorder`：录屏
 - `wl-clipboard`：剪贴板读写（复制结果、读取划词选中文本）
-- `libpulse`：可选，仅在 `--audio` 时用于自动选择系统混音设备（pactl）
-- `niri`：可选，在 `fullscreen` 模式下用于识别当前聚焦输出，以及让 OCR / 翻译弹窗按所在屏幕自适应尺寸
 
 OCR 功能另外需要系统 Python 3.10–3.13 之一（见第 3 节）。
 

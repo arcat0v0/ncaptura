@@ -25,7 +25,6 @@ A Wayland session is recommended. Runtime dependencies (Arch package names):
 - `wf-recorder`: screen recording
 - `wl-clipboard`: clipboard read/write (copying results, reading the primary selection)
 - `libpulse`: optional, only used for automatic audio device selection with `--audio` (pactl)
-- `niri`: optional, used to detect the focused output in `fullscreen` mode and to size OCR / translation popups to the current screen
 
 OCR additionally requires a system Python 3.10–3.13 (see section 3).
 
