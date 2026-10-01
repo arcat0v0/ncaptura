@@ -15,7 +15,7 @@
 - `wf-recorder`：录屏
 - `wl-clipboard`：剪贴板读写（复制结果、读取划词选中文本）
 - `pactl`：可选，仅在 `--audio` 时用于自动选择系统混音设备
-- `niri`：可选，在 `fullscreen` 模式下用于识别当前聚焦输出
+- `niri`：可选，在 `fullscreen` 模式下用于识别当前聚焦输出，以及让 OCR / 翻译弹窗按所在屏幕自适应尺寸
 
 ## 2. 通过 PKGBUILD 安装（Arch Linux / AUR）
 
@@ -50,6 +50,12 @@ ncaptura help
 ```
 
 ## 3. 快速运行方式
+
+也可以直接用 Cargo 安装到用户目录（`~/.local/bin` 需在 `PATH` 中）：
+
+```bash
+cargo install --path . --root ~/.local
+```
 
 如果你还没安装二进制，可直接通过 Cargo 调用：
 
@@ -92,7 +98,6 @@ ncaptura record stop
 
 ### OCR 与翻译
 
-
 ```bash
 ncaptura ocr
 ncaptura translate region
@@ -105,7 +110,9 @@ ncaptura translate input
 - `translate selection`：读取鼠标选中的文本（primary selection）并翻译
 - `translate input`：呼出输入翻译窗口，输入文本后回车翻译
 
-结果窗口支持直接编辑文本、「删除换行」整理段落、「复制」到剪贴板。
+结果窗口支持直接编辑文本、「删除换行」整理段落、「复制」到剪贴板（窗口关闭后剪贴板内容仍保留）。
+弹窗为悬浮覆盖层（见第 7 节），按 `Esc` 或右上角按钮关闭；
+窗口尺寸随所在屏幕自适应：横屏为左图右文，竖屏自动切换为上图下文。
 
 OCR 依赖独立的 Python 环境（不会污染系统 Python），首次使用前执行：
 
@@ -176,3 +183,9 @@ OCR / 翻译弹窗通过 wlr-layer-shell 协议以覆盖层形式悬浮在屏幕
 ### `region` 无法选择区域
 
 请确认 `slurp` 已安装，并且当前会话支持交互式区域选择。
+
+### OCR 提示「未找到 OCR Python 环境」
+
+先执行 `scripts/setup-ocr.sh` 创建识别环境（依赖 `uv`），或通过 `NCAPTURA_OCR_PYTHON` 指定已有的 Python 解释器。
+首次识别会下载模型，耗时较长属正常现象。
+
