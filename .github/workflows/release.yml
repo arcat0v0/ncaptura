@@ -1,9 +1,14 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (must match Cargo.toml; without leading v)"
+        required: true
+        type: string
+  release:
+    types: [published]
 
 permissions:
   contents: write
@@ -13,10 +18,33 @@ env:
 
 jobs:
   release:
-    name: Build and publish release artifacts
+    name: Build artifacts and create draft release
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+
+      - name: Resolve and verify version
+        id: ver
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          version="${INPUT_VERSION#v}"
+          crate_version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+          echo "input=${version} crate=${crate_version}"
+          test "$version" = "$crate_version"
+          if git ls-remote --exit-code --tags origin "refs/tags/v${version}" >/dev/null 2>&1; then
+            echo "::error::tag v${version} already exists on origin"
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "v${{ steps.ver.outputs.version }}"
+          git push origin "v${{ steps.ver.outputs.version }}"
 
       - name: Install system dependencies
         run: |
@@ -25,14 +53,6 @@ jobs:
             pkg-config libgtk-4-dev libadwaita-1-dev libgtk4-layer-shell-dev
 
       - uses: dtolnay/rust-toolchain@stable
-
-      - name: Resolve and verify version
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          crate_version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
-          echo "tag=${version} crate=${crate_version}"
-          test "$version" = "$crate_version"
-          echo "VERSION=${version}" >> "$GITHUB_ENV"
 
       - name: Run unit tests
         run: cargo test --locked
@@ -44,41 +64,42 @@ jobs:
         with:
           tool: cargo-deb@3.8.0,cargo-generate-rpm@0.21.0
 
-      - name: Build deb package
+      - name: Build deb, rpm and tarball
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
         run: |
+          set -euo pipefail
           mkdir -p dist
           cargo deb --no-build
-          cp "target/debian/ncaptura_${VERSION}_amd64.deb" "dist/"
-
-      - name: Build rpm package
-        run: |
-          mkdir -p dist
+          cp "target/debian/ncaptura_${VERSION}_amd64.deb" dist/
           cargo generate-rpm
           cp "target/generate-rpm/ncaptura-${VERSION}-1.x86_64.rpm" "dist/ncaptura-${VERSION}.x86_64.rpm"
-
-      - name: Build tarball
-        run: |
-          mkdir -p "dist/ncaptura-${VERSION}"
+          mkdir "dist/ncaptura-${VERSION}"
           cp target/release/ncaptura README.md LICENSE-MIT LICENSE-APACHE "dist/ncaptura-${VERSION}/"
           cp -r docs "dist/ncaptura-${VERSION}/"
           tar -C dist -czf "dist/ncaptura-${VERSION}-x86_64.tar.gz" "ncaptura-${VERSION}"
           rm -rf "dist/ncaptura-${VERSION}"
 
-      - name: Create GitHub Release
+      - name: Create draft GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
+          gh release create "v${VERSION}" \
+            --draft \
             --title "NCaptura ${VERSION}" \
             --generate-notes \
             "dist/ncaptura_${VERSION}_amd64.deb" \
             "dist/ncaptura-${VERSION}.x86_64.rpm" \
             "dist/ncaptura-${VERSION}-x86_64.tar.gz"
+          echo "Draft release created. Edit the notes and publish it; publishing triggers the AUR update."
 
   aur:
     name: Publish stable package to AUR
-    needs: release
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     container: archlinux:base-devel
     steps:
       - uses: actions/checkout@v4
@@ -89,14 +110,15 @@ jobs:
       - name: Push ncaptura package to AUR
         env:
           AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
           if [ -z "${AUR_SSH_PRIVATE_KEY}" ]; then
             echo "AUR_SSH_PRIVATE_KEY secret not set; skipping AUR publication"
             exit 0
           fi
-          version="${GITHUB_REF_NAME#v}"
-          sha256="$(curl -sL "https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz" | sha256sum | cut -d' ' -f1)"
+          version="${TAG#v}"
+          sha256="$(curl -sL "https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/v${version}.tar.gz" | sha256sum | cut -d' ' -f1)"
           useradd -m build
           install -dm700 -o build /home/build/.ssh
           printf '%s\n' "${AUR_SSH_PRIVATE_KEY}" > /home/build/.ssh/id_ed25519
