@@ -30,6 +30,7 @@ pub fn run_ocr_window(image: PathBuf) {
             right_label: "识别结果",
             loading_label: "正在识别文字…",
             error_title: "识别失败",
+            namespace: "ncaptura-ocr",
             left: LeftPane::Screenshot(image.clone()),
         };
         let task_image = image.clone();
@@ -76,6 +77,7 @@ fn translate_config(left: LeftPane) -> ResultWindowConfig {
         },
         right_label: "翻译结果",
         loading_label: "正在翻译…",
+        namespace: "ncaptura-translate",
         error_title: "翻译失败",
         left,
     }

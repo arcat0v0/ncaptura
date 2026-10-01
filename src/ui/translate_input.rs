@@ -1,5 +1,6 @@
 use adw::prelude::*;
 use gtk::{Align, Orientation};
+use gtk4_layer_shell::{KeyboardMode, Layer, LayerShell};
 
 pub fn build_translate_input_window<F>(
     app: &adw::Application,
@@ -13,14 +14,31 @@ where
         .title("输入翻译")
         .default_width(560)
         .default_height(-1)
+        .decorated(false)
         .build();
+    window.add_css_class("ncaptura-tool-window");
+
+    if gtk4_layer_shell::is_supported() {
+        window.init_layer_shell();
+        window.set_layer(Layer::Top);
+        window.set_keyboard_mode(KeyboardMode::Exclusive);
+        window.set_namespace(Some("ncaptura-translate-input"));
+    }
 
     let toolbar_view = adw::ToolbarView::new();
     let header = adw::HeaderBar::builder()
         .title_widget(&adw::WindowTitle::new("输入翻译", ""))
         .show_start_title_buttons(false)
-        .decoration_layout(":close")
+        .show_end_title_buttons(false)
         .build();
+    let close_button = gtk::Button::builder()
+        .icon_name("window-close-symbolic")
+        .tooltip_text("关闭")
+        .build();
+    close_button.add_css_class("circular");
+    let window_for_close = window.clone();
+    close_button.connect_clicked(move |_| window_for_close.close());
+    header.pack_end(&close_button);
     toolbar_view.add_top_bar(&header);
 
     let content = gtk::Box::builder()

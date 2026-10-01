@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use adw::prelude::*;
 use gtk::{Align, Orientation};
+use gtk4_layer_shell::{KeyboardMode, Layer, LayerShell};
 
 use crate::capture::copy_text_to_clipboard;
 use crate::text::remove_line_breaks;
@@ -17,6 +18,7 @@ pub struct ResultWindowConfig {
     pub right_label: &'static str,
     pub loading_label: &'static str,
     pub error_title: &'static str,
+    pub namespace: &'static str,
     pub left: LeftPane,
 }
 
@@ -33,16 +35,32 @@ where
         .title(config.title)
         .default_width(1060)
         .default_height(620)
+        .decorated(false)
         .build();
+    window.add_css_class("ncaptura-tool-window");
 
+    if gtk4_layer_shell::is_supported() {
+        window.init_layer_shell();
+        window.set_layer(Layer::Top);
+        window.set_keyboard_mode(KeyboardMode::Exclusive);
+        window.set_namespace(Some(config.namespace));
+    }
     let toast_overlay = adw::ToastOverlay::new();
     let toolbar_view = adw::ToolbarView::new();
 
     let header = adw::HeaderBar::builder()
         .title_widget(&adw::WindowTitle::new(config.title, ""))
         .show_start_title_buttons(false)
-        .decoration_layout(":close")
+        .show_end_title_buttons(false)
         .build();
+    let close_button = gtk::Button::builder()
+        .icon_name("window-close-symbolic")
+        .tooltip_text("关闭")
+        .build();
+    close_button.add_css_class("circular");
+    let window_for_close = window.clone();
+    close_button.connect_clicked(move |_| window_for_close.close());
+    header.pack_end(&close_button);
     toolbar_view.add_top_bar(&header);
 
     let paned = gtk::Paned::builder()
@@ -89,6 +107,17 @@ where
             }
         }
     });
+
+    let key_controller = gtk::EventControllerKey::new();
+    let window_for_key = window.clone();
+    key_controller.connect_key_pressed(move |_, key, _, _| {
+        if key == gtk::gdk::Key::Escape {
+            window_for_key.close();
+            return gtk::glib::Propagation::Stop;
+        }
+        gtk::glib::Propagation::Proceed
+    });
+    window.add_controller(key_controller);
 
     window.present();
     window
@@ -270,6 +299,11 @@ pub fn apply_result_window_css() {
         "
         .ncaptura-preview-pane {
             background-color: alpha(@window_fg_color, 0.045);
+        }
+
+        window.ncaptura-tool-window {
+            background-color: @window_bg_color;
+            border-radius: 18px;
         }
         ",
     );

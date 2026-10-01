@@ -159,15 +159,9 @@ Mod+Shift+Y    { spawn "ncaptura" "translate" "selection"; }
 Mod+Shift+I    { spawn "ncaptura" "translate" "input"; }
 ```
 
-OCR / 翻译弹窗的 app-id 分别是 `io.ncaptura.ocr`、`io.ncaptura.translate`、`io.ncaptura.translate-input`。
-在 niri 平铺布局下如希望它们以浮窗形式打开，可添加窗口规则：
-
-```kdl
-window-rule {
-    match app-id=r#"^io\.ncaptura\.(ocr|translate|translate-input)$"#
-    open-floating true
-}
-```
+OCR / 翻译弹窗通过 wlr-layer-shell 协议以覆盖层形式悬浮在屏幕上（与录屏 HUD 同一机制），
+在 niri 等支持该协议的合成器上不会被平铺，无需任何窗口规则配置；
+在不支持 layer-shell 的桌面上则回退为普通窗口。
 
 ## 8. 常见问题
 
