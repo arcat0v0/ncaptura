@@ -9,10 +9,13 @@ pub fn build_translate_input_window<F>(
 where
     F: Fn(&adw::Application, String) + 'static,
 {
+    let width = super::result_window::target_monitor_size()
+        .map(|(mon_w, _)| (mon_w * 92 / 100).min(560))
+        .unwrap_or(560);
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title("输入翻译")
-        .default_width(560)
+        .default_width(width)
         .default_height(-1)
         .decorated(false)
         .build();

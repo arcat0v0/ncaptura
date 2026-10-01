@@ -22,6 +22,71 @@ pub struct ResultWindowConfig {
     pub left: LeftPane,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct WindowLayout {
+    width: i32,
+    height: i32,
+    vertical: bool,
+    pane_position: i32,
+}
+
+impl WindowLayout {
+    fn for_monitor(monitor: Option<(i32, i32)>) -> Self {
+        let (mon_w, mon_h) = monitor.unwrap_or((1920, 1080));
+        let usable_w = (mon_w * 92 / 100).max(360);
+        let usable_h = (mon_h * 85 / 100).max(320);
+
+        if mon_h > mon_w {
+            let width = usable_w.min(860);
+            let height = usable_h.min(1100);
+            Self {
+                width,
+                height,
+                vertical: true,
+                pane_position: height * 42 / 100,
+            }
+        } else {
+            let width = usable_w.min(1060);
+            let height = usable_h.min(620);
+            Self {
+                width,
+                height,
+                vertical: false,
+                pane_position: width * 44 / 100,
+            }
+        }
+    }
+}
+
+pub(crate) fn target_monitor_size() -> Option<(i32, i32)> {
+    let display = gtk::gdk::Display::default()?;
+    let monitors = display.monitors();
+    let focused = crate::capture::focused_output_name().ok();
+
+    let mut fallback = None;
+    for index in 0..monitors.n_items() {
+        let Some(monitor) = monitors
+            .item(index)
+            .and_then(|item| item.downcast::<gtk::gdk::Monitor>().ok())
+        else {
+            continue;
+        };
+        if fallback.is_none() {
+            fallback = Some(monitor.clone());
+        }
+        if focused
+            .as_deref()
+            .is_some_and(|name| monitor.connector().as_deref() == Some(name))
+        {
+            let geometry = monitor.geometry();
+            return Some((geometry.width(), geometry.height()));
+        }
+    }
+
+    let geometry = fallback?.geometry();
+    Some((geometry.width(), geometry.height()))
+}
+
 pub fn build_result_window<F>(
     app: &adw::Application,
     config: ResultWindowConfig,
@@ -30,11 +95,12 @@ pub fn build_result_window<F>(
 where
     F: FnOnce() -> anyhow::Result<String> + Send + 'static,
 {
+    let layout = WindowLayout::for_monitor(target_monitor_size());
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title(config.title)
-        .default_width(1060)
-        .default_height(620)
+        .default_width(layout.width)
+        .default_height(layout.height)
         .decorated(false)
         .build();
     window.add_css_class("ncaptura-tool-window");
@@ -64,12 +130,16 @@ where
     toolbar_view.add_top_bar(&header);
 
     let paned = gtk::Paned::builder()
-        .orientation(Orientation::Horizontal)
+        .orientation(if layout.vertical {
+            Orientation::Vertical
+        } else {
+            Orientation::Horizontal
+        })
         .resize_start_child(false)
         .shrink_start_child(false)
         .resize_end_child(true)
         .shrink_end_child(false)
-        .position(470)
+        .position(layout.pane_position)
         .build();
 
     paned.set_start_child(Some(&build_left_pane(&config)));
@@ -314,5 +384,50 @@ pub fn apply_result_window_css() {
             &provider,
             gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::WindowLayout;
+
+    #[test]
+    fn landscape_monitor_uses_horizontal_layout() {
+        let layout = WindowLayout::for_monitor(Some((2560, 1440)));
+        assert!(!layout.vertical);
+        assert_eq!((layout.width, layout.height), (1060, 620));
+        assert_eq!(layout.pane_position, 1060 * 44 / 100);
+    }
+
+    #[test]
+    fn portrait_monitor_uses_vertical_layout_and_caps_width() {
+        let layout = WindowLayout::for_monitor(Some((1080, 1920)));
+        assert!(layout.vertical);
+        assert_eq!(layout.width, 860);
+        assert_eq!(layout.height, 1100);
+        assert_eq!(layout.pane_position, 1100 * 42 / 100);
+    }
+
+    #[test]
+    fn narrow_portrait_monitor_shrinks_to_usable_width() {
+        let layout = WindowLayout::for_monitor(Some((720, 1280)));
+        assert!(layout.vertical);
+        assert_eq!(layout.width, 720 * 92 / 100);
+        assert!(layout.width < 720);
+    }
+
+    #[test]
+    fn small_landscape_monitor_stays_within_screen() {
+        let layout = WindowLayout::for_monitor(Some((900, 700)));
+        assert!(!layout.vertical);
+        assert!(layout.width <= 900 * 92 / 100);
+        assert!(layout.height <= 700 * 85 / 100);
+    }
+
+    #[test]
+    fn missing_monitor_falls_back_to_landscape_default() {
+        let layout = WindowLayout::for_monitor(None);
+        assert!(!layout.vertical);
+        assert_eq!((layout.width, layout.height), (1060, 620));
     }
 }
