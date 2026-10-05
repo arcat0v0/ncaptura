@@ -35,6 +35,9 @@ jobs:
 
       - uses: actions/checkout@v4
 
+      - name: Trust the container workspace
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Resolve and verify version
         id: ver
         env:
