@@ -10,3 +10,8 @@
 /src/ncaptura/
 /*.pkg.tar.*
 /*.src.tar.*
+/aur/pkg/
+/aur/src/
+/aur/*.tar.gz
+/aur/*.pkg.tar.*
+/aur/*.src.tar.*
