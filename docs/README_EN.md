@@ -46,23 +46,46 @@ Note: prebuilt packages do not bundle system tools like `grim`/`slurp`/`wf-recor
 
 ### Via PKGBUILD (Arch Linux)
 
-The repository ships a `ncaptura-git` PKGBUILD at its root (tracking the main branch):
+The development package script lives at [`aur/ncaptura-git/PKGBUILD`](../aur/ncaptura-git/PKGBUILD) and tracks the main branch. Download only the packaging script; cloning the entire project first is unnecessary:
 
 ```bash
-git clone https://github.com/arcat0v0/ncaptura.git
-cd ncaptura
+mkdir ncaptura-build
+cd ncaptura-build
+curl -fLO https://raw.githubusercontent.com/arcat0v0/ncaptura/main/aur/ncaptura-git/PKGBUILD
+less PKGBUILD
 makepkg -si
 ```
 
-This installs dependencies, builds, and installs the package; remove it with `sudo pacman -R ncaptura-git`.
+Review the script before running `makepkg -si`. makepkg fetches the upstream source, installs dependencies, builds, and installs the package; subsequent builds reuse and update the source cache. Remove the package with `sudo pacman -R ncaptura-git`.
 
 ### From source
 
 ```bash
-cargo install --path . --root ~/.local
+git clone https://github.com/arcat0v0/ncaptura.git
+cd ncaptura
+cargo +stable install --path . --root ~/.local
 ```
 
 Make sure `~/.local/bin` is in your `PATH`, then verify with `ncaptura help`.
+
+### Local development and testing
+
+From the project root, use Cargo to build the current working tree, including uncommitted changes, without installing or replacing the system version:
+
+```bash
+cargo +stable run -- help
+cargo +stable run -- screenshot region
+cargo +stable test
+```
+
+To test a release build:
+
+```bash
+cargo +stable build --release
+./target/release/ncaptura help
+```
+
+Use `+stable` explicitly: the default nightly toolchain on the development machine does not include Cargo. The packaging script builds remote source, not uncommitted local changes. Local runs still use the current user's configuration and application data; screenshots, recording, and popup windows require a real Wayland session.
 
 ## 3. OCR Setup
 

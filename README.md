@@ -45,23 +45,46 @@ OCR 功能另外需要系统 Python 3.10–3.13 之一（见第 3 节）。
 
 ### 通过 PKGBUILD 安装（Arch Linux）
 
-仓库根目录自带 `ncaptura-git` 的 PKGBUILD（跟踪 main 分支），直接构建安装：
+开发版打包脚本位于 [`aur/ncaptura-git/PKGBUILD`](aur/ncaptura-git/PKGBUILD)，跟踪 main 分支。只需下载打包脚本，无需先克隆整个项目：
 
 ```bash
-git clone https://github.com/arcat0v0/ncaptura.git
-cd ncaptura
+mkdir ncaptura-build
+cd ncaptura-build
+curl -fLO https://raw.githubusercontent.com/arcat0v0/ncaptura/main/aur/ncaptura-git/PKGBUILD
+less PKGBUILD
 makepkg -si
 ```
 
-会自动安装依赖并完成构建；卸载用 `sudo pacman -R ncaptura-git`。
+阅读并确认脚本后再执行 `makepkg -si`。makepkg 会获取上游源码、自动安装依赖并完成构建和安装；后续构建会复用源码缓存并获取更新。卸载用 `sudo pacman -R ncaptura-git`。
 
 ### 从源码安装
 
 ```bash
-cargo install --path . --root ~/.local
+git clone https://github.com/arcat0v0/ncaptura.git
+cd ncaptura
+cargo +stable install --path . --root ~/.local
 ```
 
 确保 `~/.local/bin` 在 `PATH` 中，然后用 `ncaptura help` 验证。
+
+### 本地开发与测试
+
+在项目根目录使用 Cargo 构建当前工作目录中的代码，包括未提交的修改，无需安装或覆盖系统版本：
+
+```bash
+cargo +stable run -- help
+cargo +stable run -- screenshot region
+cargo +stable test
+```
+
+测试 release 构建：
+
+```bash
+cargo +stable build --release
+./target/release/ncaptura help
+```
+
+本机默认 nightly 工具链不含 Cargo，因此显式使用 `+stable`。打包脚本构建的是远端源码，不包含本地未提交的修改；本地运行仍会使用当前用户的配置和应用数据，截图、录屏及弹窗需要真实 Wayland 会话。
 
 ## 3. OCR 初始化
 
