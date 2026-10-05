@@ -38,6 +38,8 @@ Download the matching format from the [Releases](https://github.com/arcat0v0/nca
 - **rpm**: `sudo dnf install ncaptura-*.rpm`
 - **tar.gz**: portable binary archive (no desktop entry or system integration); extract and put `ncaptura` on your `PATH`
 
+Prebuilt packages are built on Debian 13 and require glibc 2.41 or newer, plus the GTK4, Libadwaita, and gtk4-layer-shell runtime libraries. Ubuntu 24.04 does not meet these requirements; build from source and install gtk4-layer-shell separately.
+
 Note: prebuilt packages do not bundle system tools like `grim`/`slurp`/`wf-recorder`/`wl-clipboard`; install them with your distribution's package manager.
 
 ### Via PKGBUILD (Arch Linux)

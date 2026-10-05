@@ -37,6 +37,8 @@ OCR 功能另外需要系统 Python 3.10–3.13 之一（见第 3 节）。
 - **rpm**：`sudo dnf install ncaptura-*.rpm`
 - **tar.gz**：便携二进制包，解压后将 `ncaptura` 放入 `PATH` 即可（不含桌面入口与系统集成）
 
+预编译包在 Debian 13 上构建，需要 glibc 2.41 或更新版本，以及 GTK4、Libadwaita、gtk4-layer-shell 运行库。Ubuntu 24.04 不满足这些要求，请改用源码构建并自行安装 gtk4-layer-shell。
+
 注意：预编译包不包含 `grim`/`slurp`/`wf-recorder`/`wl-clipboard` 等系统工具，请用发行版包管理器另行安装。
 
 ### 通过 PKGBUILD 安装（Arch Linux）
