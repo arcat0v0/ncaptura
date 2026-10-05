@@ -1,5 +1,6 @@
 mod cli_recording_hud;
 mod interactive_dialog;
+mod overlay;
 mod recording_hud;
 mod result_window;
 mod save_dialog;

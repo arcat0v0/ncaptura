@@ -2,9 +2,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
+use super::overlay::{self, OverlayKind};
 use adw::prelude::*;
 use gtk::{Align, Box as GtkBox, Button, CssProvider, Label, Orientation};
-use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 
 use crate::capture::{self, RecordingSession};
 
@@ -28,16 +28,7 @@ pub(super) fn show_recording_hud(
     hud.set_size_request(300, 50);
     hud.add_css_class("recording-hud");
 
-    if gtk4_layer_shell::is_supported() {
-        hud.init_layer_shell();
-        hud.set_layer(Layer::Overlay);
-        hud.set_anchor(Edge::Top, true);
-        hud.set_anchor(Edge::Right, true);
-        hud.set_margin(Edge::Top, 12);
-        hud.set_margin(Edge::Right, 12);
-        hud.set_keyboard_mode(KeyboardMode::OnDemand);
-        hud.set_namespace(Some("ncaptura-recording-hud"));
-    }
+    overlay::configure(&hud, OverlayKind::Hud, "ncaptura-recording-hud");
 
     let row = GtkBox::new(Orientation::Horizontal, 10);
     row.set_margin_top(4);

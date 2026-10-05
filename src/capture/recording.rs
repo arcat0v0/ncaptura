@@ -1,49 +1,25 @@
 use std::path::PathBuf;
-use std::process::Command;
 
 use anyhow::{Context, Result, bail};
-use nix::errno::Errno;
-use nix::sys::signal::{Signal, kill};
-use nix::unistd::Pid;
 
-use crate::capture::command_utils::{default_system_mix_audio_device, pick_region_geometry};
 use crate::capture::output::build_output_path;
 use crate::capture::state::{
     clear_cli_recording_state, read_cli_recording_state, write_cli_recording_state,
 };
-use crate::capture::{CaptureTarget, CliRecordingState, RecordingSession, focused_output_name};
+use crate::capture::{CaptureTarget, CliRecordingState, RecordingSession};
+use crate::platform::{process, recording, region};
 
 pub fn start_recording(target: CaptureTarget, with_audio: bool) -> Result<RecordingSession> {
     let output_path =
         build_output_path("recordings", &format!("recording-{}", target.slug()), "mkv")?;
 
-    let mut command = Command::new("wf-recorder");
-
-    match target {
+    let child = match target {
         CaptureTarget::Region => {
-            let geometry = pick_region_geometry()?;
-            command.args(["-g", &geometry]);
+            let region = region::pick_region()?;
+            recording::spawn_region(&region, with_audio, &output_path)?
         }
-        CaptureTarget::Fullscreen => {
-            if let Ok(output_name) = focused_output_name() {
-                command.args(["-o", &output_name]);
-            }
-        }
-    }
-
-    if with_audio {
-        if let Some(audio_device) = default_system_mix_audio_device() {
-            command.arg(format!("--audio={audio_device}"));
-        } else {
-            command.arg("--audio");
-        }
-    }
-
-    command.arg("-f").arg(&output_path);
-
-    let child = command
-        .spawn()
-        .context("无法启动 wf-recorder，请确认已安装并在 PATH 中")?;
+        CaptureTarget::Fullscreen => recording::spawn_fullscreen(with_audio, &output_path)?,
+    };
 
     Ok(RecordingSession {
         child,
@@ -53,23 +29,15 @@ pub fn start_recording(target: CaptureTarget, with_audio: bool) -> Result<Record
 }
 
 pub fn toggle_recording_pause(session: &mut RecordingSession) -> Result<bool> {
-    let pid = Pid::from_raw(session.child.id() as i32);
+    let pid = session.child.id();
 
     if session.paused {
-        if let Err(err) = kill(pid, Signal::SIGCONT)
-            && err != Errno::ESRCH
-        {
-            bail!("恢复录屏失败: {err}");
-        }
+        process::resume(pid)?;
         session.paused = false;
         return Ok(false);
     }
 
-    if let Err(err) = kill(pid, Signal::SIGSTOP)
-        && err != Errno::ESRCH
-    {
-        bail!("暂停录屏失败: {err}");
-    }
+    process::suspend(pid)?;
 
     session.paused = true;
     Ok(true)
@@ -77,12 +45,7 @@ pub fn toggle_recording_pause(session: &mut RecordingSession) -> Result<bool> {
 
 pub fn stop_recording(mut session: RecordingSession) -> Result<PathBuf> {
     if session.paused {
-        let pid = Pid::from_raw(session.child.id() as i32);
-        if let Err(err) = kill(pid, Signal::SIGCONT)
-            && err != Errno::ESRCH
-        {
-            bail!("恢复录屏失败: {err}");
-        }
+        process::resume(session.child.id())?;
         session.paused = false;
     }
 
@@ -92,12 +55,7 @@ pub fn stop_recording(mut session: RecordingSession) -> Result<PathBuf> {
         .context("读取录屏进程状态失败")?
         .is_none()
     {
-        let pid = Pid::from_raw(session.child.id() as i32);
-        if let Err(err) = kill(pid, Signal::SIGINT)
-            && err != Errno::ESRCH
-        {
-            bail!("发送停止信号失败: {err}");
-        }
+        process::interrupt(session.child.id())?;
     }
 
     let status = session.child.wait().context("等待录屏进程结束失败")?;
@@ -118,33 +76,13 @@ pub fn start_recording_detached(
 
     let output_path =
         build_output_path("recordings", &format!("recording-{}", target.slug()), "mkv")?;
-    let mut command = Command::new("wf-recorder");
-
-    match target {
+    let child = match target {
         CaptureTarget::Region => {
-            let geometry = pick_region_geometry()?;
-            command.args(["-g", &geometry]);
+            let region = region::pick_region()?;
+            recording::spawn_region(&region, with_audio, &output_path)?
         }
-        CaptureTarget::Fullscreen => {
-            if let Ok(output_name) = focused_output_name() {
-                command.args(["-o", &output_name]);
-            }
-        }
-    }
-
-    if with_audio {
-        if let Some(audio_device) = default_system_mix_audio_device() {
-            command.arg(format!("--audio={audio_device}"));
-        } else {
-            command.arg("--audio");
-        }
-    }
-
-    command.arg("-f").arg(&output_path);
-
-    let child = command
-        .spawn()
-        .context("无法启动 wf-recorder，请确认已安装并在 PATH 中")?;
+        CaptureTarget::Fullscreen => recording::spawn_fullscreen(with_audio, &output_path)?,
+    };
 
     let pid = child.id();
     write_cli_recording_state(pid, &output_path)?;
@@ -153,19 +91,8 @@ pub fn start_recording_detached(
 
 pub fn stop_recording_detached() -> Result<PathBuf> {
     let (pid, output_path) = read_cli_recording_state()?;
-    let process_id = Pid::from_raw(pid as i32);
-
-    if let Err(err) = kill(process_id, Signal::SIGCONT)
-        && err != Errno::ESRCH
-    {
-        bail!("发送恢复信号失败: {err}");
-    }
-
-    if let Err(err) = kill(process_id, Signal::SIGINT)
-        && err != Errno::ESRCH
-    {
-        bail!("发送停止信号失败: {err}");
-    }
+    process::resume(pid)?;
+    process::interrupt(pid)?;
 
     clear_cli_recording_state();
     Ok(output_path)

@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use adw::prelude::*;
 
-use crate::capture::WindowInfo;
+use crate::platform::WindowInfo;
 
 pub fn show_window_picker(
     app: &adw::Application,

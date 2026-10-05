@@ -6,6 +6,8 @@ NCaptura is a GTK4 + Libadwaita screenshot / screen-recording / OCR / translatio
 
 This document focuses on CLI usage, so you can bind hotkeys or call it from scripts directly.
 
+System integration lives in compile-target-selected backends under `src/platform/`; only Linux/Wayland is implemented. The `linux/` backend owns screenshots, recording, clipboard access, process signals, niri window information, and Python paths. Feature orchestration remains in core modules such as `src/capture/`, while the GTK frontend lives in `src/ui/` with shared overlay configuration in `src/ui/overlay.rs`. This separation does not add Windows/macOS support. Region selection supports negative coordinates and reports malformed geometry explicitly.
+
 ## Features
 
 - **Screenshot**: interactive region / fullscreen (focused output), saved to your pictures directory

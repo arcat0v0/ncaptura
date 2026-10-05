@@ -4,10 +4,8 @@ use std::time::Duration;
 use adw::prelude::*;
 use gtk::gdk_pixbuf::Pixbuf;
 
-use crate::capture::{
-    CaptureTarget, is_window_protocol_unsupported_error, list_windows, take_screenshot,
-    take_window_screenshot, take_window_screenshot_via_niri,
-};
+use crate::capture::{CaptureTarget, take_screenshot, take_window_screenshot};
+use crate::platform::windowing::list_windows;
 use crate::ui::{
     CaptureMode, InteractiveDialogResult, build_interactive_dialog, build_save_dialog,
     show_window_picker,
@@ -123,21 +121,11 @@ fn take_window_and_show(
     window_id: u64,
     _guard: gtk::gio::ApplicationHoldGuard,
 ) {
-    let path = match take_window_screenshot(window_id, false) {
-        Ok(path) => path,
-        Err(err) => {
-            if is_window_protocol_unsupported_error(&err) {
-                if let Err(niri_err) = take_window_screenshot_via_niri(window_id) {
-                    eprintln!("窗口截图失败: {niri_err}");
-                }
-                return;
-            }
-            eprintln!("窗口截图失败: {err}");
-            return;
-        }
-    };
-
-    show_save_dialog_for_path(app, path);
+    match take_window_screenshot(window_id, false) {
+        Ok(Some(path)) => show_save_dialog_for_path(app, path),
+        Ok(None) => {}
+        Err(err) => eprintln!("窗口截图失败: {err}"),
+    }
 }
 
 fn show_save_dialog_for_path(app: &adw::Application, path: PathBuf) {

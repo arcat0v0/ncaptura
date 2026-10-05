@@ -3,7 +3,7 @@ use std::process::Command;
 use anyhow::{Context, Result, bail};
 use serde_json::Value;
 
-use crate::capture::WindowInfo;
+use crate::platform::WindowInfo;
 
 pub fn list_windows() -> Result<Vec<WindowInfo>> {
     let output = Command::new("niri")

@@ -1,24 +1,16 @@
-mod command_utils;
 mod output;
 mod recording;
 mod screenshot;
 mod state;
-mod windows;
 
 use std::path::PathBuf;
 use std::process::Child;
-
-pub use command_utils::{copy_text_to_clipboard, primary_selection_text};
 
 pub use recording::{
     current_cli_recording_state, start_recording, start_recording_detached, stop_recording,
     stop_recording_detached, toggle_recording_pause,
 };
-pub use screenshot::{
-    is_window_protocol_unsupported_error, take_screenshot, take_window_screenshot,
-    take_window_screenshot_via_niri,
-};
-pub use windows::{focused_output_name, list_windows};
+pub use screenshot::{take_screenshot, take_window_screenshot};
 
 #[derive(Clone, Copy)]
 pub enum CaptureTarget {
@@ -33,15 +25,6 @@ impl CaptureTarget {
             CaptureTarget::Fullscreen => "fullscreen",
         }
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct WindowInfo {
-    pub id: u64,
-    pub title: String,
-    pub app_id: String,
-    pub workspace_id: u64,
-    pub is_focused: bool,
 }
 
 pub struct RecordingSession {

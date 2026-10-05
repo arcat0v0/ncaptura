@@ -1,9 +1,9 @@
 use std::env;
 
 use crate::capture::{
-    CaptureTarget, primary_selection_text, start_recording_detached, stop_recording_detached,
-    take_screenshot,
+    CaptureTarget, start_recording_detached, stop_recording_detached, take_screenshot,
 };
+use crate::platform::clipboard::primary_selection_text;
 use crate::ui::{
     run_cli_recording_hud, run_ocr_window, run_translate_input_window, run_translate_region_window,
     run_translate_selection_window,

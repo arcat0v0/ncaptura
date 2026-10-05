@@ -1,6 +1,6 @@
+use super::overlay::{self, OverlayKind};
 use adw::prelude::*;
 use gtk::{Align, Orientation};
-use gtk4_layer_shell::{KeyboardMode, Layer, LayerShell};
 
 pub fn build_translate_input_window<F>(
     app: &adw::Application,
@@ -21,12 +21,7 @@ where
         .build();
     window.add_css_class("ncaptura-tool-window");
 
-    if gtk4_layer_shell::is_supported() {
-        window.init_layer_shell();
-        window.set_layer(Layer::Top);
-        window.set_keyboard_mode(KeyboardMode::Exclusive);
-        window.set_namespace(Some("ncaptura-translate-input"));
-    }
+    overlay::configure(&window, OverlayKind::Tool, "ncaptura-translate-input");
 
     let toolbar_view = adw::ToolbarView::new();
     let header = adw::HeaderBar::builder()

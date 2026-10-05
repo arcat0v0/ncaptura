@@ -3,6 +3,7 @@ mod capture;
 mod cli;
 mod config;
 mod ocr;
+mod platform;
 mod text;
 mod translate;
 mod ui;

@@ -2,12 +2,9 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
+use super::overlay::{self, OverlayKind};
 use adw::prelude::*;
 use gtk::{Align, Box as GtkBox, Button, CssProvider, Label, Orientation};
-use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
-use nix::errno::Errno;
-use nix::sys::signal::{Signal, kill};
-use nix::unistd::Pid;
 
 use crate::capture::{self, CliRecordingState};
 
@@ -36,16 +33,7 @@ fn build_cli_recording_hud(app: &adw::Application, initial_state: CliRecordingSt
     hud.set_size_request(300, 50);
     hud.add_css_class("recording-hud");
 
-    if gtk4_layer_shell::is_supported() {
-        hud.init_layer_shell();
-        hud.set_layer(Layer::Overlay);
-        hud.set_anchor(Edge::Top, true);
-        hud.set_anchor(Edge::Right, true);
-        hud.set_margin(Edge::Top, 12);
-        hud.set_margin(Edge::Right, 12);
-        hud.set_keyboard_mode(KeyboardMode::OnDemand);
-        hud.set_namespace(Some("ncaptura-cli-recording-hud"));
-    }
+    overlay::configure(&hud, OverlayKind::Hud, "ncaptura-cli-recording-hud");
 
     let row = GtkBox::new(Orientation::Horizontal, 10);
     row.set_margin_top(4);
@@ -173,31 +161,30 @@ fn build_cli_recording_hud(app: &adw::Application, initial_state: CliRecordingSt
         let finalize = finalize.clone();
         pause_button_handle.connect_clicked(move |_| {
             let pid = recording_pid.get();
-            let process_id = Pid::from_raw(pid as i32);
 
             if paused_since.borrow().is_none() {
-                match kill(process_id, Signal::SIGSTOP) {
-                    Ok(_) => {
+                match crate::platform::process::suspend(pid) {
+                    Ok(true) => {
                         *paused_since.borrow_mut() = Some(Instant::now());
                         indicator.add_css_class("paused");
                         indicator.set_opacity(1.0);
                         pause_button.set_icon_name("media-playback-start-symbolic");
                     }
-                    Err(err) if err == Errno::ESRCH => finalize(false),
+                    Ok(false) => finalize(false),
                     Err(err) => eprintln!("暂停录屏失败: {err}"),
                 }
                 return;
             }
 
-            match kill(process_id, Signal::SIGCONT) {
-                Ok(_) => {
+            match crate::platform::process::resume(pid) {
+                Ok(true) => {
                     if let Some(start) = paused_since.borrow_mut().take() {
                         *paused_total.borrow_mut() += Instant::now().duration_since(start);
                     }
                     indicator.remove_css_class("paused");
                     pause_button.set_icon_name("media-playback-pause-symbolic");
                 }
-                Err(err) if err == Errno::ESRCH => finalize(false),
+                Ok(false) => finalize(false),
                 Err(err) => eprintln!("恢复录屏失败: {err}"),
             }
         });
@@ -215,7 +202,7 @@ fn build_cli_recording_hud(app: &adw::Application, initial_state: CliRecordingSt
             match capture::current_cli_recording_state() {
                 Ok(state) => {
                     recording_pid.set(state.pid);
-                    if process_is_running(state.pid) {
+                    if crate::platform::process::is_running(state.pid) {
                         gtk::glib::ControlFlow::Continue
                     } else {
                         finalize(false);
@@ -240,14 +227,6 @@ fn build_cli_recording_hud(app: &adw::Application, initial_state: CliRecordingSt
     }
 
     hud.present();
-}
-
-fn process_is_running(pid: u32) -> bool {
-    let process_id = Pid::from_raw(pid as i32);
-    match kill(process_id, None) {
-        Ok(_) => true,
-        Err(err) => err != Errno::ESRCH,
-    }
 }
 
 fn apply_cli_recording_hud_css() {

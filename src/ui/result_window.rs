@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 
+use super::overlay::{self, OverlayKind};
 use adw::prelude::*;
 use gtk::{Align, Orientation};
-use gtk4_layer_shell::{KeyboardMode, Layer, LayerShell};
 
-use crate::capture::copy_text_to_clipboard;
+use crate::platform::clipboard::copy_text;
 use crate::text::remove_line_breaks;
 
 pub enum LeftPane {
@@ -77,7 +77,7 @@ impl WindowLayout {
 pub(crate) fn target_monitor_size() -> Option<(i32, i32)> {
     let display = gtk::gdk::Display::default()?;
     let monitors = display.monitors();
-    let focused = crate::capture::focused_output_name().ok();
+    let focused = crate::platform::windowing::focused_output_name().ok();
 
     let mut fallback = None;
     for index in 0..monitors.n_items() {
@@ -123,12 +123,7 @@ where
         .build();
     window.add_css_class("ncaptura-tool-window");
 
-    if gtk4_layer_shell::is_supported() {
-        window.init_layer_shell();
-        window.set_layer(Layer::Top);
-        window.set_keyboard_mode(KeyboardMode::Exclusive);
-        window.set_namespace(Some(config.namespace));
-    }
+    overlay::configure(&window, OverlayKind::Tool, config.namespace);
     let toast_overlay = adw::ToastOverlay::new();
     let toolbar_view = adw::ToolbarView::new();
 
@@ -452,7 +447,7 @@ where
         let text = buffer
             .text(&buffer.start_iter(), &buffer.end_iter(), false)
             .to_string();
-        let toast = match copy_text_to_clipboard(&text) {
+        let toast = match copy_text(&text) {
             Ok(()) => adw::Toast::new("已复制到剪贴板"),
             Err(err) => adw::Toast::new(&format!("复制失败: {err}")),
         };

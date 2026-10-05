@@ -71,10 +71,10 @@ impl PaddleOcrEngine {
 
 pub fn setup_ocr_environment() -> Result<()> {
     let (program, version) = find_system_python()?;
-    eprintln!("==> 使用系统 Python: {program} ({version})");
+    eprintln!("==> 使用系统 Python: {} ({version})", program.display());
 
     let venv_dir = default_venv_dir().context("无法确定 OCR 环境目录")?;
-    let venv_python = venv_dir.join("bin/python");
+    let venv_python = crate::platform::python::venv_python(&venv_dir);
 
     eprintln!("==> 创建 Python 虚拟环境: {}", venv_dir.display());
     run_inherited(
@@ -110,15 +110,9 @@ pub fn setup_ocr_environment() -> Result<()> {
     Ok(())
 }
 
-fn find_system_python() -> Result<(String, String)> {
-    for candidate in [
-        "/usr/bin/python3.13",
-        "/usr/bin/python3.12",
-        "/usr/bin/python3.11",
-        "/usr/bin/python3.10",
-        "/usr/bin/python3",
-    ] {
-        let Ok(output) = Command::new(candidate)
+fn find_system_python() -> Result<(PathBuf, String)> {
+    for candidate in crate::platform::python::interpreter_candidates() {
+        let Ok(output) = Command::new(&candidate)
             .args([
                 "-c",
                 "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')",
@@ -133,7 +127,7 @@ fn find_system_python() -> Result<(String, String)> {
 
         let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
         if supported_python_version(&version) {
-            return Ok((candidate.to_string(), version));
+            return Ok((candidate, version));
         }
     }
 
@@ -175,7 +169,7 @@ fn default_venv_dir() -> Option<PathBuf> {
 }
 
 fn default_venv_python() -> Option<PathBuf> {
-    default_venv_dir().map(|dir| dir.join("bin/python"))
+    default_venv_dir().map(|dir| crate::platform::python::venv_python(&dir))
 }
 
 fn materialize_helper() -> Result<PathBuf> {
