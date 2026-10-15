@@ -219,7 +219,7 @@ pub fn build_interactive_dialog(
 
                 let target = match *selected_mode.borrow() {
                     CaptureMode::Screen => CaptureTarget::Fullscreen,
-                    CaptureMode::Window => CaptureTarget::Region,
+                    CaptureMode::Window => CaptureTarget::Window,
                     CaptureMode::Selection => CaptureTarget::Region,
                 };
 

@@ -11,7 +11,7 @@ System integration lives in compile-target-selected backends under `src/platform
 ## Features
 
 - **Screenshot**: interactive region / fullscreen (focused output), saved to your pictures directory
-- **Screen recording**: region / fullscreen, optional system audio, with a top-right HUD to pause or stop anytime
+- **Screen recording**: region / window / fullscreen, optional system audio, with a top-right HUD to pause or stop anytime; window recording uses the Wayland ScreenCast portal and does not fall back to a fixed rectangle
 - **Screenshot OCR**: select a screen region and recognize Chinese/English text with PaddleOCR (Paddle inference models, downloaded automatically on first recognition)
 - **Selection translation**: select text with the mouse, press the hotkey, and get it translated
 - **Input translation**: hotkey opens a translation window; type the text and press Enter
@@ -25,6 +25,7 @@ A Wayland session is recommended. Runtime dependencies (Arch package names):
 - `grim`: screenshots
 - `slurp`: region selection (required for the `region` target)
 - `wf-recorder`: screen recording
+- `gstreamer`, PipeWire GStreamer and H.264/Vorbis encoder plugins: window recording
 - `wl-clipboard`: clipboard read/write (copying results, reading the primary selection)
 - `libpulse`: optional, only used for automatic audio device selection with `--audio` (pactl)
 
@@ -118,8 +119,10 @@ ncaptura screenshot fullscreen
 ```bash
 ncaptura record start region
 ncaptura record start fullscreen
+ncaptura record start window
 ncaptura record start region --audio
 ncaptura record start fullscreen --audio
+ncaptura record start window --audio
 ncaptura record stop
 ```
 

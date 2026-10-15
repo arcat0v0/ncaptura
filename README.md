@@ -11,7 +11,7 @@
 ## 支持的功能
 
 - **截图**：区域框选 / 全屏（聚焦输出），自动保存到图片目录
-- **录屏**：区域 / 全屏录制，可选系统音频，右上角 HUD 可随时暂停或停止
+- **录屏**：区域 / 窗口 / 全屏录制，可选系统音频，右上角 HUD 可随时暂停或停止；窗口录制通过 Wayland ScreenCast portal 捕获窗口内容，不会退化为固定矩形
 - **截图 OCR**：框选屏幕区域，基于 PaddleOCR（Paddle 推理模型，首次识别时自动下载）高精度识别中英文文字
 - **划词翻译**：鼠标选中文本后按下快捷键即可翻译
 - **输入翻译**：快捷键呼出翻译窗口，输入文本后回车翻译
@@ -25,6 +25,7 @@
 - `grim`：截图
 - `slurp`：区域选择（`region` 目标需要）
 - `wf-recorder`：录屏
+- `gstreamer`、PipeWire GStreamer 插件及 H.264/Vorbis 编码插件：窗口录屏
 - `wl-clipboard`：剪贴板读写（复制结果、读取划词选中文本）
 
 OCR 功能另外需要系统 Python 3.10–3.13 之一（见第 3 节）。
@@ -117,8 +118,10 @@ ncaptura screenshot fullscreen
 ```bash
 ncaptura record start region
 ncaptura record start fullscreen
+ncaptura record start window
 ncaptura record start region --audio
 ncaptura record start fullscreen --audio
+ncaptura record start window --audio
 ncaptura record stop
 ```
 

@@ -19,17 +19,28 @@ serde_yml = "0.0.12"
 ureq = "3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
+ashpd = { version = "0.13", features = ["screencast"] }
+futures-util = "0.3"
+gstreamer = "0.24"
 gtk4-layer-shell = "0.7"
+libc = "0.2"
+libspa = { version = "0.9", features = ["v0_3_40"] }
+pipewire = { version = "0.9", features = ["v0_3_49"] }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.30", features = ["signal", "process"] }
+signal-hook = "0.3"
+tokio = { version = "1", features = ["rt", "macros", "sync", "time"] }
+
+[dev-dependencies]
+tempfile = "3"
 
 [package.metadata.deb]
 maintainer = "arcat0v0"
 section = "utils"
 priority = "optional"
 revision = ""
-depends = "libgtk-4-1 (>= 4.8), libadwaita-1-0, libgtk4-layer-shell0, grim, slurp, wf-recorder, wl-clipboard"
+depends = "libgtk-4-1 (>= 4.8), libadwaita-1-0, libgtk4-layer-shell0, gstreamer1.0, gstreamer1.0-plugins-base, gstreamer1.0-plugins-good, gstreamer1.0-plugins-ugly, gstreamer1.0-pipewire, pipewire, grim, slurp, wf-recorder, wl-clipboard"
 recommends = "pulseaudio-utils, python3 (>= 3.10)"
 assets = [
     ["target/release/ncaptura", "usr/bin/ncaptura", "755"],
@@ -50,6 +61,12 @@ assets = [
 gtk4 = "*"
 libadwaita = "*"
 gtk4-layer-shell = "*"
+gstreamer1 = "*"
+gstreamer1-plugins-base = "*"
+gstreamer1-plugins-good = "*"
+gstreamer1-plugins-ugly = "*"
+gstreamer1-plugin-pipewire = "*"
+pipewire = "*"
 grim = "*"
 slurp = "*"
 wf-recorder = "*"

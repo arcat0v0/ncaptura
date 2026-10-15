@@ -69,6 +69,7 @@ pub(super) fn show_recording_hud(
     let blinking_visible = Rc::new(RefCell::new(true));
     let blink_source: Rc<RefCell<Option<gtk::glib::SourceId>>> = Rc::new(RefCell::new(None));
     let timer_source: Rc<RefCell<Option<gtk::glib::SourceId>>> = Rc::new(RefCell::new(None));
+    let monitor_source: Rc<RefCell<Option<gtk::glib::SourceId>>> = Rc::new(RefCell::new(None));
 
     {
         let timer_label = timer_label.clone();
@@ -147,6 +148,7 @@ pub(super) fn show_recording_hud(
         let recording_session = recording_session.clone();
         let blink_source = blink_source.clone();
         let timer_source = timer_source.clone();
+        let monitor_source = monitor_source.clone();
         stop_button.connect_clicked(move |_| {
             if let Some(session) = recording_session.borrow_mut().take() {
                 match capture::stop_recording(session) {
@@ -160,6 +162,9 @@ pub(super) fn show_recording_hud(
             if let Some(source) = timer_source.borrow_mut().take() {
                 source.remove();
             }
+            if let Some(source) = monitor_source.borrow_mut().take() {
+                source.remove();
+            }
             hud.destroy();
             mode_stack.set_visible_child_name("recording");
             action_button.set_label("Start Recording");
@@ -171,6 +176,7 @@ pub(super) fn show_recording_hud(
         let recording_session = recording_session.clone();
         let blink_source = blink_source.clone();
         let timer_source = timer_source.clone();
+        let monitor_source = monitor_source.clone();
         let main_window = main_window.clone();
         let mode_stack = mode_stack.clone();
         let action_button = action_button.clone();
@@ -184,11 +190,49 @@ pub(super) fn show_recording_hud(
             if let Some(source) = timer_source.borrow_mut().take() {
                 source.remove();
             }
+            if let Some(source) = monitor_source.borrow_mut().take() {
+                source.remove();
+            }
             mode_stack.set_visible_child_name("recording");
             action_button.set_label("Start Recording");
             main_window.present();
             gtk::glib::Propagation::Proceed
         });
+    }
+
+    {
+        let hud = hud.clone();
+        let main_window = main_window.clone();
+        let mode_stack = mode_stack.clone();
+        let action_button = action_button.clone();
+        let recording_session = recording_session.clone();
+        let blink_source = blink_source.clone();
+        let timer_source = timer_source.clone();
+        let monitor_source_handle = monitor_source.clone();
+        let source = gtk::glib::timeout_add_local(Duration::from_millis(500), move || {
+            let finished = recording_session
+                .borrow_mut()
+                .as_mut()
+                .and_then(|session| session.child.try_wait().ok())
+                .is_some();
+            if !finished {
+                return gtk::glib::ControlFlow::Continue;
+            }
+            recording_session.borrow_mut().take();
+            if let Some(source) = blink_source.borrow_mut().take() {
+                source.remove();
+            }
+            if let Some(source) = timer_source.borrow_mut().take() {
+                source.remove();
+            }
+            monitor_source_handle.borrow_mut().take();
+            hud.destroy();
+            mode_stack.set_visible_child_name("recording");
+            action_button.set_label("Start Recording");
+            main_window.present();
+            gtk::glib::ControlFlow::Break
+        });
+        *monitor_source.borrow_mut() = Some(source);
     }
 
     hud.present();

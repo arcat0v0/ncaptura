@@ -12,10 +12,11 @@ pub use recording::{
 };
 pub use screenshot::{take_screenshot, take_window_screenshot};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum CaptureTarget {
     Region,
     Fullscreen,
+    Window,
 }
 
 impl CaptureTarget {
@@ -23,6 +24,7 @@ impl CaptureTarget {
         match self {
             CaptureTarget::Region => "region",
             CaptureTarget::Fullscreen => "fullscreen",
+            CaptureTarget::Window => "window",
         }
     }
 }

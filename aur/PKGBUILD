@@ -6,7 +6,7 @@ arch=('x86_64')
 options=('!lto')
 url="https://github.com/arcat0v0/ncaptura"
 license=('MIT' 'Apache-2.0')
-depends=('gcc-libs' 'glibc' 'gtk4' 'libadwaita' 'gtk4-layer-shell' 'grim' 'slurp' 'wf-recorder' 'wl-clipboard')
+depends=('gcc-libs' 'glibc' 'gtk4' 'libadwaita' 'gtk4-layer-shell' 'gstreamer' 'gst-plugins-base' 'gst-plugins-good' 'gst-plugins-ugly' 'gst-plugin-pipewire' 'pipewire' 'grim' 'slurp' 'wf-recorder' 'wl-clipboard')
 makedepends=('cargo')
 optdepends=(
   'libpulse: pactl support for --audio auto device selection'

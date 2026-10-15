@@ -142,7 +142,7 @@ fn parse_cli_command(args: &[String]) -> Result<CliCommand, String> {
                 return Err("record start 命令格式错误".to_string());
             }
 
-            let target = parse_target(&args[2])?;
+            let target = parse_record_target(&args[2])?;
             let audio = if args.len() == 4 {
                 if args[3] == "--audio" {
                     true
@@ -198,6 +198,15 @@ fn parse_target(input: &str) -> Result<CaptureTarget, String> {
     }
 }
 
+fn parse_record_target(input: &str) -> Result<CaptureTarget, String> {
+    match input {
+        "region" => Ok(CaptureTarget::Region),
+        "fullscreen" => Ok(CaptureTarget::Fullscreen),
+        "window" => Ok(CaptureTarget::Window),
+        _ => Err(format!("不支持的录屏目标类型: {input}")),
+    }
+}
+
 fn cli_usage() -> &'static str {
     "NCaptura CLI
 
@@ -207,6 +216,7 @@ fn cli_usage() -> &'static str {
   ncaptura screenshot fullscreen
   ncaptura record start region [--audio]
   ncaptura record start fullscreen [--audio]
+  ncaptura record start window [--audio]
   ncaptura record stop
   ncaptura ocr
   ncaptura ocr setup
@@ -250,6 +260,52 @@ mod tests {
         for arg in ["version", "--version", "-v", "-V"] {
             let args = vec![arg.to_string()];
             assert!(matches!(parse_cli_command(&args), Ok(CliCommand::Version)));
+        }
+    }
+
+    #[test]
+    fn parses_window_recording_target() {
+        let args = vec![
+            "record".to_string(),
+            "start".to_string(),
+            "window".to_string(),
+        ];
+        assert!(matches!(
+            parse_cli_command(&args),
+            Ok(CliCommand::RecordStart {
+                target: CaptureTarget::Window,
+                audio: false,
+            })
+        ));
+    }
+
+    #[test]
+    fn screenshot_does_not_accept_window_target() {
+        let args = vec!["screenshot".to_string(), "window".to_string()];
+        assert!(parse_cli_command(&args).is_err());
+    }
+
+    #[test]
+    fn parses_window_recording_with_audio() {
+        let args = ["record", "start", "window", "--audio"].map(String::from);
+        assert!(matches!(
+            parse_cli_command(&args),
+            Ok(CliCommand::RecordStart {
+                target: CaptureTarget::Window,
+                audio: true,
+            })
+        ));
+    }
+
+    #[test]
+    fn rejects_invalid_window_recording_arguments() {
+        for args in [
+            vec!["record", "start", "window", "--invalid"],
+            vec!["record", "start", "window", "--audio", "--audio"],
+            vec!["record", "start", "unknown"],
+        ] {
+            let args: Vec<_> = args.into_iter().map(String::from).collect();
+            assert!(parse_cli_command(&args).is_err());
         }
     }
 }
