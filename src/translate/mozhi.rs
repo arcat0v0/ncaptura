@@ -6,9 +6,9 @@ use super::{Translator, target_language_for};
 
 pub(crate) fn default_instances() -> Vec<String> {
     [
+        "https://mozhi.aryak.me",
+        "https://translate.projectsegfau.lt",
         "https://mozhi.ducks.party",
-        "https://mozhi.pussthecat.org",
-        "https://mozhi.canine.tools",
     ]
     .iter()
     .map(|instance| instance.to_string())
