@@ -1,4 +1,6 @@
+use std::cell::Cell;
 use std::path::PathBuf;
+use std::rc::Rc;
 
 use super::overlay::{self, OverlayKind};
 use adw::prelude::*;
@@ -22,6 +24,8 @@ pub struct ResultWindowConfig {
     pub left: LeftPane,
     pub language_selector: bool,
     pub translate_button: bool,
+    /// 在页脚显示“重新翻译”按钮，允许用户主动重新发起请求。
+    pub retry_button: bool,
 }
 
 const TARGET_LANGUAGES: &[(&str, &str)] = &[
@@ -36,7 +40,43 @@ const TARGET_LANGUAGES: &[(&str, &str)] = &[
     ("es", "Español"),
 ];
 
-type SharedTask = std::sync::Arc<dyn Fn(Option<String>) -> anyhow::Result<String> + Send + Sync>;
+/// 任务入参：(当前左侧原文，目标语言)。截图类窗口没有原文，传入空字符串。
+type SharedTask =
+    std::sync::Arc<dyn Fn(String, Option<String>) -> anyhow::Result<String> + Send + Sync>;
+
+const FADE_DURATION_MS: u32 = 160;
+
+/// 结果窗口的共享状态，供语言切换、重试、互换等回调使用。
+struct ResultUi {
+    stack: gtk::Stack,
+    result_view: gtk::TextView,
+    /// 仅文本原文的窗口才有可编辑的左侧文本框。
+    source_view: Option<gtk::TextView>,
+    dropdown: Option<gtk::DropDown>,
+    toast_overlay: adw::ToastOverlay,
+    task: SharedTask,
+    error_title: &'static str,
+    /// 每次发起请求自增，用于丢弃过期的响应。
+    generation: Cell<u64>,
+    /// 互换动画进行中，期间忽略新的翻译请求。
+    swapping: Cell<bool>,
+    /// 程序化修改语言下拉框时，避免触发翻译。
+    suppress_lang_notify: Cell<bool>,
+}
+
+fn buffer_text(view: &gtk::TextView) -> String {
+    let buffer = view.buffer();
+    buffer
+        .text(&buffer.start_iter(), &buffer.end_iter(), false)
+        .to_string()
+}
+
+fn target_for_index(index: usize) -> Option<String> {
+    TARGET_LANGUAGES
+        .get(index)
+        .filter(|(code, _)| !code.is_empty())
+        .map(|(code, _)| code.to_string())
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct WindowLayout {
@@ -110,7 +150,7 @@ pub fn build_result_window<F, G>(
     on_translate: Option<G>,
 ) -> adw::ApplicationWindow
 where
-    F: Fn(Option<String>) -> anyhow::Result<String> + Send + Sync + 'static,
+    F: Fn(String, Option<String>) -> anyhow::Result<String> + Send + Sync + 'static,
     G: Fn(&adw::Application, String) + 'static,
 {
     let layout = WindowLayout::for_monitor(target_monitor_size());
@@ -155,8 +195,9 @@ where
         .position(layout.pane_position)
         .build();
 
-    paned.set_start_child(Some(&build_left_pane(&config)));
-    let (right_pane, stack, text_view) =
+    let (left_pane, source_view) = build_left_pane(&config);
+    paned.set_start_child(Some(&left_pane));
+    let (right_pane, stack, text_view, footer) =
         build_right_pane(&config, &toast_overlay, app, on_translate);
     paned.set_end_child(Some(&right_pane));
 
@@ -164,38 +205,106 @@ where
     toast_overlay.set_child(Some(&toolbar_view));
     window.set_content(Some(&toast_overlay));
 
-    let task: SharedTask = std::sync::Arc::new(task);
-
-    if config.language_selector {
+    let dropdown = config.language_selector.then(|| {
         let labels: Vec<&str> = TARGET_LANGUAGES.iter().map(|(_, label)| *label).collect();
         let dropdown = gtk::DropDown::from_strings(&labels);
         dropdown.set_tooltip_text(Some("目标语言"));
-        let stack_for_lang = stack.clone();
-        let text_for_lang = text_view.clone();
-        let task_for_lang = task.clone();
-        let error_title = config.error_title;
-        dropdown.connect_selected_notify(move |dropdown| {
-            let index = dropdown.selected() as usize;
-            let Some((code, _)) = TARGET_LANGUAGES.get(index) else {
+        dropdown
+    });
+
+    // 只有可编辑的原文才能与译文互换。
+    let swap_button = source_view.as_ref().map(|_| {
+        let button = gtk::Button::builder()
+            .label("⇄")
+            .tooltip_text("互换原文与译文")
+            .build();
+        button.add_css_class("ncaptura-swap-button");
+        button
+    });
+
+    let ui = Rc::new(ResultUi {
+        stack,
+        result_view: text_view,
+        source_view,
+        dropdown: dropdown.clone(),
+        toast_overlay,
+        task: std::sync::Arc::new(task),
+        error_title: config.error_title,
+        generation: Cell::new(0),
+        swapping: Cell::new(false),
+        suppress_lang_notify: Cell::new(false),
+    });
+
+    if let Some(dropdown) = &dropdown {
+        let ui_weak = Rc::downgrade(&ui);
+        dropdown.connect_selected_notify(move |_| {
+            let Some(ui) = ui_weak.upgrade() else { return };
+            if ui.suppress_lang_notify.get() {
                 return;
-            };
-            let target = if code.is_empty() {
-                None
-            } else {
-                Some(code.to_string())
-            };
-            start_task(
-                &stack_for_lang,
-                &text_for_lang,
-                error_title,
-                task_for_lang.clone(),
-                target,
-            );
+            }
+            start_task(&ui);
         });
-        header.pack_end(&dropdown);
+        header.pack_end(dropdown);
     }
 
-    start_task(&stack, &text_view, config.error_title, task, None);
+    if let Some(button) = &swap_button {
+        let ui_weak = Rc::downgrade(&ui);
+        button.connect_clicked(move |_| {
+            if let Some(ui) = ui_weak.upgrade() {
+                swap_texts(&ui);
+            }
+        });
+        header.pack_start(button);
+    }
+
+    if config.retry_button {
+        let retry_button = gtk::Button::builder()
+            .child(
+                &adw::ButtonContent::builder()
+                    .icon_name("view-refresh-symbolic")
+                    .label("重新翻译")
+                    .build(),
+            )
+            .tooltip_text(if ui.source_view.is_some() {
+                "按当前原文重新翻译 (Ctrl+Enter)"
+            } else {
+                "重新请求翻译"
+            })
+            .build();
+        retry_button.add_css_class("pill");
+        let ui_weak = Rc::downgrade(&ui);
+        retry_button.connect_clicked(move |_| {
+            if let Some(ui) = ui_weak.upgrade() {
+                start_task(&ui);
+            }
+        });
+        footer.prepend(&retry_button);
+    }
+
+    if let Some(source_view) = &ui.source_view {
+        // Ctrl+Enter 在编辑原文后主动发起翻译。
+        let submit_key = gtk::EventControllerKey::new();
+        let ui_weak = Rc::downgrade(&ui);
+        submit_key.connect_key_pressed(move |_, key, _, state| {
+            let is_enter = matches!(key, gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter);
+            if is_enter && state.contains(gtk::gdk::ModifierType::CONTROL_MASK) {
+                if let Some(ui) = ui_weak.upgrade() {
+                    start_task(&ui);
+                }
+                return gtk::glib::Propagation::Stop;
+            }
+            gtk::glib::Propagation::Proceed
+        });
+        source_view.add_controller(submit_key);
+    }
+
+    // 回调里只持有弱引用，由窗口负责保活 ResultUi；销毁时顺便作废在途请求。
+    let keep_alive = ui.clone();
+    window.connect_destroy(move |_| {
+        keep_alive.generation.set(keep_alive.generation.get() + 1);
+    });
+
+    start_task(&ui);
 
     let key_controller = gtk::EventControllerKey::new();
     let window_for_key = window.clone();
@@ -212,49 +321,131 @@ where
     window
 }
 
-fn start_task(
-    stack: &gtk::Stack,
-    text_view: &gtk::TextView,
-    error_title: &'static str,
-    task: SharedTask,
-    target: Option<String>,
-) {
-    stack.set_visible_child_name("loading");
+/// 以当前左侧原文和语言下拉框的选择发起一次翻译；新请求会作废在途请求。
+fn start_task(ui: &Rc<ResultUi>) {
+    if ui.swapping.get() {
+        return;
+    }
 
+    let source = ui.source_view.as_ref().map(buffer_text).unwrap_or_default();
+    if ui.source_view.is_some() && source.trim().is_empty() {
+        ui.toast_overlay
+            .add_toast(adw::Toast::new("原文为空，无法翻译"));
+        return;
+    }
+    let target = ui
+        .dropdown
+        .as_ref()
+        .and_then(|dropdown| target_for_index(dropdown.selected() as usize));
+
+    let request_id = ui.generation.get() + 1;
+    ui.generation.set(request_id);
+    ui.stack.set_visible_child_name("loading");
+
+    let task = ui.task.clone();
     let (sender, receiver) = async_channel::bounded::<Result<String, String>>(1);
     std::thread::spawn(move || {
-        let outcome = task(target).map_err(|err| err.to_string());
+        let outcome = task(source, target).map_err(|err| err.to_string());
         let _ = sender.send_blocking(outcome);
     });
 
-    let stack = stack.clone();
-    let text_view = text_view.clone();
+    let ui = ui.clone();
     gtk::glib::spawn_future_local(async move {
-        if let Ok(outcome) = receiver.recv().await {
-            match outcome {
-                Ok(text) => {
-                    text_view.buffer().set_text(&text);
-                    stack.set_visible_child_name("result");
+        let Ok(outcome) = receiver.recv().await else {
+            return;
+        };
+        if ui.generation.get() != request_id {
+            return;
+        }
+        match outcome {
+            Ok(text) => {
+                ui.result_view.buffer().set_text(&text);
+                ui.stack.set_visible_child_name("result");
+            }
+            Err(message) => {
+                if let Some(old) = ui.stack.child_by_name("error") {
+                    ui.stack.remove(&old);
                 }
-                Err(message) => {
-                    if let Some(old) = stack.child_by_name("error") {
-                        stack.remove(&old);
-                    }
-                    let status = adw::StatusPage::builder()
-                        .icon_name("dialog-error-symbolic")
-                        .title(error_title)
-                        .description(&message)
-                        .vexpand(true)
-                        .build();
-                    stack.add_named(&status, Some("error"));
-                    stack.set_visible_child_name("error");
-                }
+                let status = adw::StatusPage::builder()
+                    .icon_name("dialog-error-symbolic")
+                    .title(ui.error_title)
+                    .description(&message)
+                    .vexpand(true)
+                    .build();
+                ui.stack.add_named(&status, Some("error"));
+                ui.stack.set_visible_child_name("error");
             }
         }
     });
 }
 
-fn build_left_pane(config: &ResultWindowConfig) -> gtk::Box {
+/// 互换原文与译文：两侧文字淡出，在最暗处交换内容，再淡入。
+fn swap_texts(ui: &Rc<ResultUi>) {
+    let Some(source_view) = ui.source_view.clone() else {
+        return;
+    };
+    if ui.swapping.get() {
+        return;
+    }
+    if ui.stack.visible_child_name().as_deref() != Some("result") {
+        ui.toast_overlay
+            .add_toast(adw::Toast::new("暂无译文可互换"));
+        return;
+    }
+    let source = buffer_text(&source_view);
+    let result = buffer_text(&ui.result_view);
+    if result.trim().is_empty() {
+        ui.toast_overlay
+            .add_toast(adw::Toast::new("暂无译文可互换"));
+        return;
+    }
+
+    ui.swapping.set(true);
+    // 互换后原先的目标语言不再成立，重置为“自动”，避免下次翻译回到同一语言。
+    if let Some(dropdown) = &ui.dropdown
+        && dropdown.selected() != 0
+    {
+        ui.suppress_lang_notify.set(true);
+        dropdown.set_selected(0);
+        ui.suppress_lang_notify.set(false);
+    }
+
+    let swapped = Cell::new(false);
+    let result_view = ui.result_view.clone();
+    let source_for_anim = source_view.clone();
+    let target = adw::CallbackAnimationTarget::new(move |progress| {
+        // 0 → 0.5 淡出，0.5 → 1 淡入，中点处交换文字。
+        if progress >= 0.5 && !swapped.replace(true) {
+            source_for_anim.buffer().set_text(&result);
+            result_view.buffer().set_text(&source);
+        }
+        let opacity = (1.0 - 2.0 * progress).abs();
+        source_for_anim.set_opacity(opacity);
+        result_view.set_opacity(opacity);
+    });
+
+    let animation = adw::TimedAnimation::builder()
+        .widget(&source_view)
+        .value_from(0.0)
+        .value_to(1.0)
+        .duration(FADE_DURATION_MS * 2)
+        .easing(adw::Easing::Linear)
+        .target(&target)
+        .build();
+
+    let ui_for_done = ui.clone();
+    animation.connect_done(move |_| {
+        if let Some(view) = &ui_for_done.source_view {
+            view.set_opacity(1.0);
+        }
+        ui_for_done.result_view.set_opacity(1.0);
+        ui_for_done.swapping.set(false);
+    });
+    animation.play();
+}
+
+fn build_left_pane(config: &ResultWindowConfig) -> (gtk::Box, Option<gtk::TextView>) {
+    let mut editable_source = None;
     let pane = gtk::Box::builder()
         .orientation(Orientation::Vertical)
         .spacing(12)
@@ -285,8 +476,7 @@ fn build_left_pane(config: &ResultWindowConfig) -> gtk::Box {
         }
         LeftPane::SourceText(text) => {
             let source_view = gtk::TextView::builder()
-                .editable(false)
-                .cursor_visible(false)
+                .editable(true)
                 .wrap_mode(gtk::WrapMode::WordChar)
                 .pixels_below_lines(8)
                 .top_margin(12)
@@ -302,10 +492,11 @@ fn build_left_pane(config: &ResultWindowConfig) -> gtk::Box {
                 .vexpand(true)
                 .build();
             pane.append(&scroller);
+            editable_source = Some(source_view);
         }
     }
 
-    pane
+    (pane, editable_source)
 }
 
 fn build_right_pane<G>(
@@ -313,7 +504,7 @@ fn build_right_pane<G>(
     toast_overlay: &adw::ToastOverlay,
     app: &adw::Application,
     on_translate: Option<G>,
-) -> (gtk::Box, gtk::Stack, gtk::TextView)
+) -> (gtk::Box, gtk::Stack, gtk::TextView, gtk::Box)
 where
     G: Fn(&adw::Application, String) + 'static,
 {
@@ -457,7 +648,7 @@ where
 
     pane.append(&footer);
 
-    (pane, stack, text_view)
+    (pane, stack, text_view, footer)
 }
 
 pub fn apply_result_window_css() {
@@ -466,6 +657,12 @@ pub fn apply_result_window_css() {
         "
         .ncaptura-preview-pane {
             background-color: alpha(@window_fg_color, 0.045);
+        }
+
+        button.ncaptura-swap-button {
+            font-size: 16px;
+            min-width: 32px;
+            padding: 0 8px;
         }
 
         window.ncaptura-tool-window {
@@ -486,7 +683,14 @@ pub fn apply_result_window_css() {
 
 #[cfg(test)]
 mod tests {
-    use super::WindowLayout;
+    use super::{WindowLayout, target_for_index};
+
+    #[test]
+    fn auto_language_maps_to_no_explicit_target() {
+        assert_eq!(target_for_index(0), None);
+        assert_eq!(target_for_index(1).as_deref(), Some("zh-CN"));
+        assert_eq!(target_for_index(999), None);
+    }
 
     #[test]
     fn landscape_monitor_uses_horizontal_layout() {

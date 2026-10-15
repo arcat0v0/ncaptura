@@ -35,12 +35,13 @@ pub fn run_ocr_window(image: PathBuf) {
             left: LeftPane::Screenshot(image.clone()),
             language_selector: false,
             translate_button: true,
+            retry_button: false,
         };
         let task_image = image.clone();
         build_result_window(
             app,
             config,
-            move |_| recognize_text(&task_image),
+            move |_, _| recognize_text(&task_image),
             Some(show_translate_window),
         );
     });
@@ -60,7 +61,7 @@ pub fn run_translate_region_window(image: PathBuf) {
         build_result_window(
             app,
             config,
-            move |target| {
+            move |_, target| {
                 let text = recognize_text(&task_image)?;
                 translator.translate(&text, target.as_deref())
             },
@@ -78,12 +79,13 @@ pub fn run_translate_input_window() {
 }
 
 fn show_translate_window(app: &adw::Application, source: String) {
-    let config = translate_config(LeftPane::SourceText(source.clone()));
+    let config = translate_config(LeftPane::SourceText(source));
     let translator = default_translator();
     build_result_window(
         app,
         config,
-        move |target| translator.translate(&source, target.as_deref()),
+        // 原文可在左侧编辑，因此每次请求都使用窗口传入的当前文本。
+        move |source, target| translator.translate(source.trim(), target.as_deref()),
         None::<fn(&adw::Application, String)>,
     );
 }
@@ -102,6 +104,7 @@ fn translate_config(left: LeftPane) -> ResultWindowConfig {
         left,
         language_selector: true,
         translate_button: false,
+        retry_button: true,
     }
 }
 
