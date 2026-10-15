@@ -32,7 +32,8 @@ jobs:
           apt-get install -y --no-install-recommends \
             build-essential ca-certificates curl git gh xz-utils \
             pkg-config libgtk-4-dev libadwaita-1-dev libgtk4-layer-shell-dev \
-            libpipewire-0.3-dev libspa-0.2-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+            libpipewire-0.3-dev libspa-0.2-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            clang libclang-dev
 
       - uses: actions/checkout@v4
 
