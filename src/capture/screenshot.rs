@@ -25,7 +25,7 @@ pub fn take_screenshot_with_clipboard(
             platform::screenshot::capture_region_interactive(&output_path)?;
         }
         CaptureTarget::Fullscreen => platform::screenshot::capture_fullscreen(&output_path)?,
-        CaptureTarget::Window => return Err(anyhow::anyhow!("截图不支持窗口目标")),
+        CaptureTarget::Window => platform::screenshot::capture_window_interactive(&output_path)?,
     }
 
     if copy_to_clipboard {
@@ -42,7 +42,7 @@ pub fn take_window_screenshot(window_id: u64, copy_to_clipboard: bool) -> Result
         "png",
     )?;
 
-    if !platform::screenshot::capture_window(window_id, &output_path)? {
+    if !platform::screenshot::capture_window_by_id(window_id, &output_path)? {
         return Ok(None);
     }
 

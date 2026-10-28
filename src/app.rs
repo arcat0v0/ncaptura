@@ -43,7 +43,14 @@ fn perform_capture(
             schedule_target_capture(app, CaptureTarget::Region, result.delay_seconds, guard);
         }
         CaptureMode::Window => {
-            show_window_picker_for_capture(app, result.delay_seconds, guard);
+            if crate::platform::capabilities::supported(
+                crate::platform::compositor::detect(),
+                crate::platform::capabilities::Capability::ListWindows,
+            ) {
+                show_window_picker_for_capture(app, result.delay_seconds, guard);
+            } else {
+                schedule_target_capture(app, CaptureTarget::Window, result.delay_seconds, guard);
+            }
         }
     }
 }

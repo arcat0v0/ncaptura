@@ -5,7 +5,7 @@ use anyhow::{Result, bail};
 
 use super::{
     compositor::{Compositor, detect},
-    run_command,
+    portal, region, run_command,
     windowing::focused_output_name,
 };
 use crate::platform::Region;
@@ -13,7 +13,8 @@ use crate::platform::Region;
 pub fn capture_fullscreen(output_path: &Path) -> Result<()> {
     match detect() {
         Compositor::Kde => capture_with_spectacle(&["-f"], output_path),
-        Compositor::Wlr => {
+        Compositor::Gnome => portal::capture_screenshot(false, output_path),
+        Compositor::Wlroots => {
             let mut command = Command::new("grim");
             if let Ok(output_name) = focused_output_name() {
                 command.args(["-o", &output_name]);
@@ -27,9 +28,20 @@ pub fn capture_fullscreen(output_path: &Path) -> Result<()> {
 pub fn capture_region_interactive(output_path: &Path) -> Result<()> {
     match detect() {
         Compositor::Kde => capture_with_spectacle(&["-r"], output_path),
-        Compositor::Wlr => {
-            let region = super::region::pick_region()?;
+        Compositor::Gnome => portal::capture_screenshot(true, output_path),
+        Compositor::Wlroots => {
+            let region = region::pick_region()?;
             capture_region(&region, output_path)
+        }
+    }
+}
+
+pub fn capture_window_interactive(output_path: &Path) -> Result<()> {
+    match detect() {
+        Compositor::Kde => capture_with_spectacle(&["-a"], output_path),
+        Compositor::Gnome => portal::capture_screenshot(true, output_path),
+        Compositor::Wlroots => {
+            bail!("窗口截图需要选择目标窗口，请在图形界面（ncaptura）中使用");
         }
     }
 }
@@ -41,7 +53,7 @@ fn capture_region(region: &Region, output_path: &Path) -> Result<()> {
     run_command(command, "截图失败")
 }
 
-pub fn capture_window(window_id: u64, output_path: &Path) -> Result<bool> {
+pub fn capture_window_by_id(window_id: u64, output_path: &Path) -> Result<bool> {
     let mut command = Command::new("grim");
     command.args(["-T", &window_id.to_string()]);
     command.arg(output_path);

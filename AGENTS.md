@@ -4,7 +4,7 @@
 
 Rust + GTK4/Libadwaita 的 Wayland（目标 niri）截图/录屏/OCR/翻译工具。
 
-- 截图/录屏通过子进程编排外部工具：按 `XDG_CURRENT_DESKTOP` 分发，niri 等 wlr 协议合成器用 `grim`/`slurp`/`wf-recorder`，KDE 用 `spectacle`（`src/platform/linux/compositor.rs`）；应用自身不含 Wayland 抓帧协议代码
+- 截图/录屏通过子进程编排外部工具，按 `XDG_CURRENT_DESKTOP` 分发（`src/platform/linux/compositor.rs` 检测、`capabilities.rs` 能力矩阵）：niri 等 wlr 协议合成器用 `grim`/`slurp`/`wf-recorder`，KDE 截图用 `spectacle`，GNOME 截图经 ashpd 走 xdg-desktop-portal（120s 超时）；窗口录屏为 portal ScreenCast + GStreamer；应用自身不含 Wayland 抓帧协议代码
 - OCR/翻译弹窗使用 gtk4-layer-shell 覆盖层（`src/ui/result_window.rs`），不依赖合成器窗口规则；`is_supported()` 失败时回退普通窗口
 - OCR 通过独立 Python venv 运行 PaddleOCR（`src/ocr/`），JSON 协议通信
 - 翻译走 `Translator` trait（`src/translate/mod.rs`），后端经 `default_translator()` 工厂分发；UI 只依赖 trait，新增后端只改工厂与新增模块

@@ -254,6 +254,7 @@ fn parse_target(input: &str) -> Result<CaptureTarget, String> {
     match input {
         "region" => Ok(CaptureTarget::Region),
         "fullscreen" => Ok(CaptureTarget::Fullscreen),
+        "window" => Ok(CaptureTarget::Window),
         _ => Err(format!("不支持的目标类型: {input}")),
     }
 }
@@ -274,6 +275,7 @@ fn cli_usage() -> &'static str {
   ncaptura                      启动图形界面
   ncaptura screenshot region
   ncaptura screenshot fullscreen
+  ncaptura screenshot window
   ncaptura record start region [--audio]
   ncaptura record start fullscreen [--audio]
   ncaptura record start window [--audio]
@@ -349,9 +351,14 @@ mod tests {
     }
 
     #[test]
-    fn screenshot_does_not_accept_window_target() {
-        let args = vec!["screenshot".to_string(), "window".to_string()];
-        assert!(parse_cli_command(&args).is_err());
+    fn parses_screenshot_window_target() {
+        let args = ["screenshot", "window"].map(String::from);
+        assert!(matches!(
+            parse_cli_command(&args),
+            Ok(CliCommand::Screenshot {
+                target: CaptureTarget::Window
+            })
+        ));
     }
 
     #[test]

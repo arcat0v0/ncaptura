@@ -28,8 +28,20 @@
 - `gstreamer`、PipeWire GStreamer 插件及 H.264/Vorbis 编码插件：窗口录屏
 - `wl-clipboard`：剪贴板读写（复制结果、读取划词选中文本）
 
-KDE Wayland 会话的截图改用 `spectacle`（Plasma 自带），此时无需 `grim`/`slurp`；
-录屏仍依赖 `wf-recorder`，KWin 暂不支持，属已知限制。
+多桌面支持按 `XDG_CURRENT_DESKTOP` 自动检测，各环境后端与能力如下：
+
+| 功能 | niri / wlroots 系 | KDE | GNOME |
+| --- | --- | --- | --- |
+| 区域截图 | slurp + grim | spectacle | xdg-desktop-portal |
+| 全屏截图 | grim | spectacle | xdg-desktop-portal |
+| 窗口截图 | 窗口选择器 + grim | spectacle（活动窗口） | xdg-desktop-portal |
+| 区域录屏 | wf-recorder | 暂不支持 | 暂不支持 |
+| 全屏录屏 | wf-recorder | 暂不支持 | 暂不支持 |
+| 窗口录屏 | portal + PipeWire | 同左 | 同左 |
+
+KDE 截图需 `spectacle`（Plasma 自带，此时无需 `grim`/`slurp`）；GNOME 截图依赖会话自带的
+`xdg-desktop-portal`，区域 / 窗口选择由 GNOME Shell 的截图 UI 完成；区域与全屏录屏目前
+仅 wlr 协议合成器可用（依赖 `wf-recorder`）。
 
 OCR 功能另外需要系统 Python 3.10–3.13 之一（见第 3 节）。
 
@@ -111,10 +123,12 @@ ncaptura ocr setup
 ```bash
 ncaptura screenshot region
 ncaptura screenshot fullscreen
+ncaptura screenshot window
 ```
 
 - `region`：调用 `slurp` 交互框选区域
 - `fullscreen`：全屏截图（在 niri 下会优先当前聚焦输出）
+- `window`：窗口截图（niri 下请在图形界面中选择窗口；KDE 截取活动窗口，GNOME 由桌面 UI 选择）
 
 ### 录屏
 
@@ -268,6 +282,13 @@ OCR / 翻译弹窗通过 wlr-layer-shell 协议以覆盖层形式悬浮在屏幕
 
 `grim` 依赖的 wlr-screencopy 协议在 KWin 上不可用。KDE 会话请使用本工具的 spectacle 后端
 （自动检测，需安装 `spectacle`）；该错误提示通常来自旧版本。
+
+
+### GNOME 下截图或划词翻译异常
+
+截图通过 xdg-desktop-portal 完成，区域 / 窗口选择由 GNOME Shell 截图 UI 承担；
+GNOME 48 起交互截图存在上游回归（区域选择可能失败），异常时可先用全屏截图。
+划词翻译依赖的 primary selection 在 GNOME 下可能不可用（Mutter 未实现 wlr 数据控制协议）。
 
 ### `region` 无法选择区域
 

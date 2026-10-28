@@ -29,9 +29,21 @@ A Wayland session is recommended. Runtime dependencies (Arch package names):
 - `wl-clipboard`: clipboard read/write (copying results, reading the primary selection)
 - `libpulse`: optional, only used for automatic audio device selection with `--audio` (pactl)
 
-On KDE Wayland, screenshots use `spectacle` (bundled with Plasma) instead, so `grim`/`slurp`
-are not needed there; screen recording still requires `wf-recorder`, which KWin does not
-support (known limitation).
+Multi-desktop support is detected automatically via `XDG_CURRENT_DESKTOP`:
+
+| Feature | niri / wlroots | KDE | GNOME |
+| --- | --- | --- | --- |
+| Region screenshot | slurp + grim | spectacle | xdg-desktop-portal |
+| Fullscreen screenshot | grim | spectacle | xdg-desktop-portal |
+| Window screenshot | window picker + grim | spectacle (active window) | xdg-desktop-portal |
+| Region recording | wf-recorder | not supported yet | not supported yet |
+| Fullscreen recording | wf-recorder | not supported yet | not supported yet |
+| Window recording | portal + PipeWire | same | same |
+
+KDE screenshots need `spectacle` (bundled with Plasma; `grim`/`slurp` are not needed there).
+GNOME screenshots rely on the session's `xdg-desktop-portal`; region / window selection is
+handled by the GNOME Shell screenshot UI. Region and fullscreen recording are currently
+limited to wlr-protocol compositors (`wf-recorder`).
 
 OCR additionally requires a system Python 3.10–3.13 (see section 3).
 
@@ -113,10 +125,12 @@ ncaptura ocr setup
 ```bash
 ncaptura screenshot region
 ncaptura screenshot fullscreen
+ncaptura screenshot window
 ```
 
 - `region`: interactive region selection via `slurp`
 - `fullscreen`: full-screen capture (prefers the focused output under niri)
+- `window`: window screenshot (use the GUI picker under niri; active window on KDE; desktop UI selection on GNOME)
 
 ### Recording
 
@@ -271,6 +285,15 @@ Install the dependencies and make sure the commands are in your `PATH`.
 The wlr-screencopy protocol `grim` relies on is not available on KWin. On KDE sessions this
 tool uses its spectacle backend instead (auto-detected; `spectacle` must be installed). This
 error message usually comes from an older version.
+
+
+### Screenshots or selection translation misbehave on GNOME
+
+Screenshots go through xdg-desktop-portal; region / window selection is handled by the GNOME
+Shell screenshot UI. Since GNOME 48 there is an upstream regression where interactive
+screenshots may fail — fall back to fullscreen capture if that happens. Selection
+translation may not work on GNOME (Mutter does not implement the wlr data-control protocol
+that wl-clipboard relies on).
 
 ### `region` selection does not work
 
