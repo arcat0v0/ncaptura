@@ -10,9 +10,11 @@ use crate::capture::state::{
     clear_cli_recording_state, read_cli_recording_state, write_cli_recording_state,
 };
 use crate::capture::{CaptureTarget, CliRecordingState, RecordingSession};
-use crate::platform::{process, recording, region};
+use crate::platform::capabilities::Capability;
+use crate::platform::{capabilities, compositor, process, recording, region};
 
 pub fn start_recording(target: CaptureTarget, with_audio: bool) -> Result<RecordingSession> {
+    ensure_recording_supported(target)?;
     let output_path =
         build_output_path("recordings", &format!("recording-{}", target.slug()), "mkv")?;
 
@@ -74,6 +76,7 @@ pub fn start_recording_detached(
     target: CaptureTarget,
     with_audio: bool,
 ) -> Result<CliRecordingState> {
+    ensure_recording_supported(target)?;
     if let Ok((pid, _)) = read_cli_recording_state() {
         if process::is_running(pid) {
             bail!("已有通过 CLI 启动的录屏在进行中，请先停止");
@@ -158,4 +161,22 @@ pub fn current_cli_recording_state() -> Result<CliRecordingState> {
         bail!("录屏进程已结束");
     }
     Ok(CliRecordingState { pid, output_path })
+}
+
+fn ensure_recording_supported(target: CaptureTarget) -> Result<()> {
+    let kind = compositor::detect();
+    let capability = match target {
+        CaptureTarget::Region => Capability::RecordRegion,
+        CaptureTarget::Fullscreen => Capability::RecordFullscreen,
+        CaptureTarget::Window => Capability::RecordWindow,
+    };
+    if capabilities::supported(kind, capability) {
+        return Ok(());
+    }
+
+    bail!(
+        "{}暂不支持{}会话，目前仅 niri 等 wlr 协议合成器可用（依赖 wf-recorder）",
+        capability.label(),
+        kind.label()
+    );
 }

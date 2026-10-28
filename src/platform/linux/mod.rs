@@ -1,5 +1,7 @@
+pub mod capabilities;
 pub mod clipboard;
 pub mod compositor;
+pub mod portal;
 pub mod process;
 pub mod python;
 pub mod recording;

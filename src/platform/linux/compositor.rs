@@ -2,8 +2,19 @@ use std::env;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Compositor {
-    Wlr,
+    Wlroots,
     Kde,
+    Gnome,
+}
+
+impl Compositor {
+    pub fn label(self) -> &'static str {
+        match self {
+            Compositor::Wlroots => "wlr 协议合成器",
+            Compositor::Kde => "KDE",
+            Compositor::Gnome => "GNOME",
+        }
+    }
 }
 
 pub fn detect() -> Compositor {
@@ -12,14 +23,22 @@ pub fn detect() -> Compositor {
 
 fn from_session_desktop(desktop: Option<&str>) -> Compositor {
     match desktop {
-        Some(value)
+        Some(value) => {
             if value
                 .split(':')
-                .any(|name| name.eq_ignore_ascii_case("kde")) =>
-        {
-            Compositor::Kde
+                .any(|name| name.eq_ignore_ascii_case("kde"))
+            {
+                Compositor::Kde
+            } else if value
+                .split(':')
+                .any(|name| name.eq_ignore_ascii_case("gnome"))
+            {
+                Compositor::Gnome
+            } else {
+                Compositor::Wlroots
+            }
         }
-        _ => Compositor::Wlr,
+        None => Compositor::Wlroots,
     }
 }
 
@@ -35,11 +54,26 @@ mod tests {
     }
 
     #[test]
+    fn detects_gnome_session() {
+        assert_eq!(from_session_desktop(Some("GNOME")), Compositor::Gnome);
+        assert_eq!(from_session_desktop(Some("gnome")), Compositor::Gnome);
+        assert_eq!(
+            from_session_desktop(Some("ubuntu:GNOME")),
+            Compositor::Gnome
+        );
+    }
+
+    #[test]
     fn defaults_to_wlr_protocols() {
-        assert_eq!(from_session_desktop(Some("niri")), Compositor::Wlr);
-        assert_eq!(from_session_desktop(Some("GNOME")), Compositor::Wlr);
-        assert_eq!(from_session_desktop(Some("wlroots")), Compositor::Wlr);
-        assert_eq!(from_session_desktop(Some("")), Compositor::Wlr);
-        assert_eq!(from_session_desktop(None), Compositor::Wlr);
+        assert_eq!(from_session_desktop(Some("niri")), Compositor::Wlroots);
+        assert_eq!(from_session_desktop(Some("sway")), Compositor::Wlroots);
+        assert_eq!(from_session_desktop(Some("Hyprland")), Compositor::Wlroots);
+        assert_eq!(from_session_desktop(Some("")), Compositor::Wlroots);
+        assert_eq!(from_session_desktop(None), Compositor::Wlroots);
+    }
+
+    #[test]
+    fn kde_takes_precedence_over_gnome() {
+        assert_eq!(from_session_desktop(Some("KDE:GNOME")), Compositor::Kde);
     }
 }

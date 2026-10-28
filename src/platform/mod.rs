@@ -2,7 +2,9 @@
 mod linux;
 
 #[cfg(target_os = "linux")]
-pub use linux::{clipboard, process, python, recording, region, screenshot, windowing};
+pub use linux::{
+    capabilities, clipboard, compositor, process, python, recording, region, screenshot, windowing,
+};
 
 #[derive(Clone, Debug)]
 pub struct WindowInfo {
