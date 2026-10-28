@@ -9,6 +9,7 @@ license=('MIT' 'Apache-2.0')
 depends=('gcc-libs' 'glibc' 'gtk4' 'libadwaita' 'gtk4-layer-shell' 'gstreamer' 'gst-plugins-base' 'gst-plugins-good' 'gst-plugins-ugly' 'gst-plugin-pipewire' 'pipewire' 'grim' 'slurp' 'wf-recorder' 'wl-clipboard')
 makedepends=('cargo')
 optdepends=(
+  'spectacle: screenshots on KDE Wayland sessions'
   'libpulse: pactl support for --audio auto device selection'
   'python310: system interpreter used by `ncaptura ocr setup` (any of python310-313 works)'
 )

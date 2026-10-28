@@ -41,7 +41,7 @@ section = "utils"
 priority = "optional"
 revision = ""
 depends = "libgtk-4-1 (>= 4.8), libadwaita-1-0, libgtk4-layer-shell0, gstreamer1.0, gstreamer1.0-plugins-base, gstreamer1.0-plugins-good, gstreamer1.0-plugins-ugly, gstreamer1.0-pipewire, pipewire, grim, slurp, wf-recorder, wl-clipboard"
-recommends = "pulseaudio-utils, python3 (>= 3.10)"
+recommends = "pulseaudio-utils, python3 (>= 3.10), spectacle"
 assets = [
     ["target/release/ncaptura", "usr/bin/ncaptura", "755"],
     ["README.md", "usr/share/doc/ncaptura/README.md", "644"],
@@ -75,3 +75,4 @@ wl-clipboard = "*"
 [package.metadata.generate-rpm.recommends]
 pulseaudio-utils = "*"
 python3 = "*"
+spectacle = "*"

@@ -1,4 +1,5 @@
 pub mod clipboard;
+pub mod compositor;
 pub mod process;
 pub mod python;
 pub mod recording;
@@ -11,9 +12,12 @@ use std::process::Command;
 use anyhow::{Context, Result, bail};
 
 pub(crate) fn run_command(mut command: Command, context_message: &str) -> Result<()> {
-    let output = command
-        .output()
-        .with_context(|| format!("{context_message}: 无法启动命令"))?;
+    let output = command.output().with_context(|| {
+        format!(
+            "{context_message}: 无法启动命令 {}，请确认已安装",
+            command.get_program().to_string_lossy()
+        )
+    })?;
 
     if output.status.success() {
         return Ok(());

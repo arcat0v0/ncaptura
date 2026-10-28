@@ -12,7 +12,7 @@ pub use recording::{
 };
 pub use screenshot::{take_screenshot, take_window_screenshot};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CaptureTarget {
     Region,
     Fullscreen,

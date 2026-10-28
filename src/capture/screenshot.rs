@@ -22,8 +22,7 @@ pub fn take_screenshot_with_clipboard(
 
     match target {
         CaptureTarget::Region => {
-            let region = platform::region::pick_region()?;
-            platform::screenshot::capture_region(&region, &output_path)?;
+            platform::screenshot::capture_region_interactive(&output_path)?;
         }
         CaptureTarget::Fullscreen => platform::screenshot::capture_fullscreen(&output_path)?,
         CaptureTarget::Window => return Err(anyhow::anyhow!("截图不支持窗口目标")),
