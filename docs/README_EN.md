@@ -29,6 +29,10 @@ A Wayland session is recommended. Runtime dependencies (Arch package names):
 - `wl-clipboard`: clipboard read/write (copying results, reading the primary selection)
 - `libpulse`: optional, only used for automatic audio device selection with `--audio` (pactl)
 
+On KDE Wayland, screenshots use `spectacle` (bundled with Plasma) instead, so `grim`/`slurp`
+are not needed there; screen recording still requires `wf-recorder`, which KWin does not
+support (known limitation).
+
 OCR additionally requires a system Python 3.10–3.13 (see section 3).
 
 ## 2. Installation
@@ -134,6 +138,8 @@ ncaptura record stop
 
 ```bash
 ncaptura ocr
+ncaptura ocr <image-path>
+ncaptura ocr -
 ncaptura ocr setup
 ncaptura translate region
 ncaptura translate selection
@@ -141,6 +147,8 @@ ncaptura translate input
 ```
 
 - `ocr`: select a region, recognize text with PaddleOCR, and open the result window
+- `ocr <image-path>`: recognize an existing image file, so any other screenshot tool works
+- `ocr -`: read image data from stdin, e.g. `grim -g "$(slurp)" - | ncaptura ocr -`
 - `ocr setup`: initialize / rebuild the OCR Python environment (see section 3)
 - `translate region`: select a region, recognize its text, and translate
 - `translate selection`: translate the mouse-selected text (primary selection)
@@ -257,6 +265,12 @@ Usually means no CLI-started recording exists, or the state file was cleaned up.
 ### A command is reported missing (e.g. `grim`/`wf-recorder`)
 
 Install the dependencies and make sure the commands are in your `PATH`.
+
+### Screenshot on KDE Wayland fails with compositor doesn't support the screen capture protocol
+
+The wlr-screencopy protocol `grim` relies on is not available on KWin. On KDE sessions this
+tool uses its spectacle backend instead (auto-detected; `spectacle` must be installed). This
+error message usually comes from an older version.
 
 ### `region` selection does not work
 

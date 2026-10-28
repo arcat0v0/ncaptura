@@ -28,6 +28,9 @@
 - `gstreamer`、PipeWire GStreamer 插件及 H.264/Vorbis 编码插件：窗口录屏
 - `wl-clipboard`：剪贴板读写（复制结果、读取划词选中文本）
 
+KDE Wayland 会话的截图改用 `spectacle`（Plasma 自带），此时无需 `grim`/`slurp`；
+录屏仍依赖 `wf-recorder`，KWin 暂不支持，属已知限制。
+
 OCR 功能另外需要系统 Python 3.10–3.13 之一（见第 3 节）。
 
 ## 2. 安装
@@ -133,6 +136,8 @@ ncaptura record stop
 
 ```bash
 ncaptura ocr
+ncaptura ocr <图片路径>
+ncaptura ocr -
 ncaptura ocr setup
 ncaptura translate region
 ncaptura translate selection
@@ -140,6 +145,8 @@ ncaptura translate input
 ```
 
 - `ocr`：框选区域后调用 PaddleOCR 识别文字，弹出「文字识别」结果窗口
+- `ocr <图片路径>`：直接识别已有图片文件，可配合其他截图工具使用
+- `ocr -`：从标准输入读取图片数据，如 `grim -g "$(slurp)" - | ncaptura ocr -`
 - `ocr setup`：初始化 / 重建 OCR Python 环境（见第 3 节）
 - `translate region`：框选区域识别文字并翻译
 - `translate selection`：读取鼠标选中的文本（primary selection）并翻译
@@ -256,6 +263,11 @@ OCR / 翻译弹窗通过 wlr-layer-shell 协议以覆盖层形式悬浮在屏幕
 ### 提示某命令不存在（如 `grim`/`wf-recorder`）
 
 请先安装依赖并确保命令在 `PATH` 中。
+
+### KDE Wayland 下截图报 compositor doesn't support the screen capture protocol
+
+`grim` 依赖的 wlr-screencopy 协议在 KWin 上不可用。KDE 会话请使用本工具的 spectacle 后端
+（自动检测，需安装 `spectacle`）；该错误提示通常来自旧版本。
 
 ### `region` 无法选择区域
 
