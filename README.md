@@ -36,12 +36,12 @@
 | 全屏截图 | grim | spectacle | xdg-desktop-portal |
 | 窗口截图 | 窗口选择器 + grim | spectacle（活动窗口） | xdg-desktop-portal |
 | 区域录屏 | wf-recorder | 暂不支持 | 暂不支持 |
-| 全屏录屏 | wf-recorder | 暂不支持 | 暂不支持 |
+| 全屏录屏 | wf-recorder | portal + PipeWire | portal + PipeWire |
 | 窗口录屏 | portal + PipeWire | 同左 | 同左 |
 
 KDE 截图需 `spectacle`（Plasma 自带，此时无需 `grim`/`slurp`）；GNOME 截图依赖会话自带的
-`xdg-desktop-portal`，区域 / 窗口选择由 GNOME Shell 的截图 UI 完成；区域与全屏录屏目前
-仅 wlr 协议合成器可用（依赖 `wf-recorder`）。
+`xdg-desktop-portal`，区域 / 窗口选择由 GNOME Shell 的截图 UI 完成；全屏与窗口录屏在
+各桌面均可使用；区域录屏受 Wayland portal 协议能力限制，目前仅 wlr 协议合成器可用（依赖 `wf-recorder`）。
 
 OCR 功能另外需要系统 Python 3.10–3.13 之一（见第 3 节）。
 

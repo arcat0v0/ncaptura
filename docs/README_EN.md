@@ -37,13 +37,14 @@ Multi-desktop support is detected automatically via `XDG_CURRENT_DESKTOP`:
 | Fullscreen screenshot | grim | spectacle | xdg-desktop-portal |
 | Window screenshot | window picker + grim | spectacle (active window) | xdg-desktop-portal |
 | Region recording | wf-recorder | not supported yet | not supported yet |
-| Fullscreen recording | wf-recorder | not supported yet | not supported yet |
+| Fullscreen recording | wf-recorder | portal + PipeWire | portal + PipeWire |
 | Window recording | portal + PipeWire | same | same |
 
 KDE screenshots need `spectacle` (bundled with Plasma; `grim`/`slurp` are not needed there).
 GNOME screenshots rely on the session's `xdg-desktop-portal`; region / window selection is
-handled by the GNOME Shell screenshot UI. Region and fullscreen recording are currently
-limited to wlr-protocol compositors (`wf-recorder`).
+handled by the GNOME Shell screenshot UI. Fullscreen and window recording are available across
+all desktops; region recording is limited to wlr-protocol compositors (`wf-recorder`) due to
+portal protocol constraints.
 
 OCR additionally requires a system Python 3.10–3.13 (see section 3).
 

@@ -23,6 +23,19 @@ fn main() {
         }
         return;
     }
+    if args.get(1).map(String::as_str) == Some("__record-monitor") {
+        let Some(output_path) = args.get(2) else {
+            eprintln!("全屏录屏缺少输出文件");
+            std::process::exit(2);
+        };
+        let with_audio = args.iter().any(|arg| arg == "--audio");
+        let result = platform::recording::run_monitor_recording(output_path.into(), with_audio);
+        if let Err(err) = result {
+            eprintln!("全屏录屏失败: {err:#}");
+            std::process::exit(1);
+        }
+        return;
+    }
 
     if let Err(code) = cli::handle_cli_if_requested() {
         std::process::exit(code);

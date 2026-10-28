@@ -4,8 +4,8 @@
 
 Rust + GTK4/Libadwaita 的 Wayland（目标 niri）截图/录屏/OCR/翻译工具。
 
-- 截图/录屏通过子进程编排外部工具，按 `XDG_CURRENT_DESKTOP` 分发（`src/platform/linux/compositor.rs` 检测、`capabilities.rs` 能力矩阵）：niri 等 wlr 协议合成器用 `grim`/`slurp`/`wf-recorder`，KDE 截图用 `spectacle`，GNOME 截图经 ashpd 走 xdg-desktop-portal（120s 超时）；窗口录屏为 portal ScreenCast + GStreamer；应用自身不含 Wayland 抓帧协议代码
-- 已实证（隔离会话模拟，2026-10）：宿主模式的 spectacle 不走 portal，直连 `org.kde.KWin.ScreenShot2`，无 KWin 时静默退出 1；`-r` 无交互时 exit 0 且不产出文件（由输出文件存在性检查兜底）。GNOME 截图链路（ashpd → portal → gnome-shell）与 KDE 截图链路（spectacle → KWin）均已在 dbus-run-session + headless/nested 合成器的模拟环境中端到端验证；窗口录屏在最小化 KWin 下 portal 不报告 Window 源类型，P3 需查后端激活条件
+- 截图/录屏通过子进程编排外部工具，按 `XDG_CURRENT_DESKTOP` 分发（`src/platform/linux/compositor.rs` 检测、`capabilities.rs` 能力矩阵）：niri 等 wlr 协议合成器用 `grim`/`slurp`/`wf-recorder`，KDE 截图用 `spectacle`，GNOME 截图经 ashpd 走 xdg-desktop-portal（120s 超时）；全屏与窗口录屏在各桌面通过 portal ScreenCast + GStreamer 支持（wlr 全屏优先 `wf-recorder`）；应用自身不含 Wayland 抓帧协议代码
+- 已实证（隔离会话模拟，2026-10）：宿主模式的 spectacle 不走 portal，直连 `org.kde.KWin.ScreenShot2`，无 KWin 时静默退出 1；`-r` 无交互时 exit 0 且不产出文件（由输出文件存在性检查兜底）。GNOME 与 KDE 截图链路均已在 dbus-run-session + 模拟合成器环境中端到端验证；全屏录屏在 KDE/GNOME 下通过 ScreenCast(Monitor) 流式录制，区域录屏受限于 portal 规范仅 wlr 支持并在界面与 CLI 拦截提示
 - OCR/翻译弹窗使用 gtk4-layer-shell 覆盖层（`src/ui/result_window.rs`），不依赖合成器窗口规则；`is_supported()` 失败时回退普通窗口
 - OCR 通过独立 Python venv 运行 PaddleOCR（`src/ocr/`），JSON 协议通信
 - 翻译走 `Translator` trait（`src/translate/mod.rs`），后端经 `default_translator()` 工厂分发；UI 只依赖 trait，新增后端只改工厂与新增模块

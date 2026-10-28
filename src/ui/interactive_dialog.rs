@@ -182,11 +182,29 @@ pub fn build_interactive_dialog(
         let take_screenshot_button = take_screenshot_button.clone();
         let pointer_row = pointer_row.clone();
         let audio_row = audio_row.clone();
+        let selection_button = selection_button.clone();
+        let screen_button = screen_button.clone();
         mode_stack.connect_visible_child_name_notify(move |stack| {
             let recording_mode = stack.visible_child_name().as_deref() == Some("recording");
             *is_record_mode.borrow_mut() = recording_mode;
             pointer_row.set_sensitive(!recording_mode);
             audio_row.set_visible(recording_mode);
+
+            let region_record_supported = crate::platform::capabilities::supported(
+                crate::platform::compositor::detect(),
+                crate::platform::capabilities::Capability::RecordRegion,
+            );
+            if recording_mode && !region_record_supported {
+                selection_button.set_sensitive(false);
+                selection_button.set_tooltip_text(Some("当前桌面环境暂不支持区域录屏"));
+                if selection_button.is_active() {
+                    screen_button.set_active(true);
+                }
+            } else {
+                selection_button.set_sensitive(true);
+                selection_button.set_tooltip_text(None);
+            }
+
             if recording_mode {
                 if recording_session.borrow().is_some() {
                     take_screenshot_button.set_label("Stop Recording");

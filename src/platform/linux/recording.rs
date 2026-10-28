@@ -11,17 +11,31 @@ use futures_util::StreamExt;
 use gst::prelude::*;
 use gstreamer as gst;
 
+use super::compositor::{Compositor, detect};
 use super::windowing::focused_output_name;
 use crate::platform::Region;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PortalSourceType {
+    Window,
+    Monitor,
+}
 
 mod frames;
 
 pub fn spawn_fullscreen(with_audio: bool, output_path: &Path) -> Result<Child> {
-    let mut command = Command::new("wf-recorder");
-    if let Ok(output_name) = focused_output_name() {
-        command.args(["-o", &output_name]);
+    match detect() {
+        Compositor::Wlroots => {
+            let mut command = Command::new("wf-recorder");
+            if let Ok(output_name) = focused_output_name() {
+                command.args(["-o", &output_name]);
+            }
+            spawn(command, with_audio, output_path)
+        }
+        Compositor::Kde | Compositor::Gnome => {
+            spawn_portal(PortalSourceType::Monitor, with_audio, output_path)
+        }
     }
-    spawn(command, with_audio, output_path)
 }
 
 pub fn spawn_region(region: &Region, with_audio: bool, output_path: &Path) -> Result<Child> {
@@ -31,29 +45,71 @@ pub fn spawn_region(region: &Region, with_audio: bool, output_path: &Path) -> Re
 }
 
 pub fn spawn_window(with_audio: bool, output_path: &Path) -> Result<Child> {
+    spawn_portal(PortalSourceType::Window, with_audio, output_path)
+}
+
+fn spawn_portal(
+    source_type: PortalSourceType,
+    with_audio: bool,
+    output_path: &Path,
+) -> Result<Child> {
     let executable = std::env::current_exe().context("无法定位 ncaptura 可执行文件")?;
     let mut command = Command::new(executable);
-    command.arg("__record-window").arg(output_path);
+    match source_type {
+        PortalSourceType::Window => command.arg("__record-window"),
+        PortalSourceType::Monitor => command.arg("__record-monitor"),
+    };
+    command.arg(output_path);
     if with_audio {
         command.arg("--audio");
     }
+    let label = match source_type {
+        PortalSourceType::Window => "窗口",
+        PortalSourceType::Monitor => "全屏",
+    };
     command
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .context("无法启动窗口录屏进程")
+        .with_context(|| format!("无法启动{label}录屏进程"))
 }
 
 pub fn run_window_recording(output_path: PathBuf, with_audio: bool) -> Result<()> {
+    run_portal_recording(PortalSourceType::Window, output_path, with_audio)
+}
+
+pub fn run_monitor_recording(output_path: PathBuf, with_audio: bool) -> Result<()> {
+    run_portal_recording(PortalSourceType::Monitor, output_path, with_audio)
+}
+
+pub fn run_portal_recording(
+    source_type: PortalSourceType,
+    output_path: PathBuf,
+    with_audio: bool,
+) -> Result<()> {
+    let label = match source_type {
+        PortalSourceType::Window => "窗口",
+        PortalSourceType::Monitor => "全屏",
+    };
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .context("无法初始化窗口录屏运行时")?;
-    runtime.block_on(async move { run_window_recording_async(output_path, with_audio).await })
+        .with_context(|| format!("无法初始化{label}录屏运行时"))?;
+    runtime.block_on(async move {
+        run_portal_recording_async(source_type, output_path, with_audio).await
+    })
 }
 
-async fn run_window_recording_async(output_path: PathBuf, with_audio: bool) -> Result<()> {
+async fn run_portal_recording_async(
+    source_type: PortalSourceType,
+    output_path: PathBuf,
+    with_audio: bool,
+) -> Result<()> {
+    let label = match source_type {
+        PortalSourceType::Window => "窗口",
+        PortalSourceType::Monitor => "全屏",
+    };
     gst::init().context("无法初始化 GStreamer")?;
     let interrupted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let _interrupt = signal_hook::flag::register(signal_hook::consts::SIGINT, interrupted.clone())
@@ -67,7 +123,7 @@ async fn run_window_recording_async(output_path: PathBuf, with_audio: bool) -> R
     };
     tokio::pin!(stop);
     let source = tokio::select! {
-        result = WindowCaptureSource::request() => result?,
+        result = PortalCaptureSource::request(source_type) => result?,
         () = &mut stop => return Ok(()),
     };
     let result = async {
@@ -75,7 +131,7 @@ async fn run_window_recording_async(output_path: PathBuf, with_audio: bool) -> R
             .session
             .receive_closed()
             .await
-            .context("无法监测窗口录屏会话")?;
+            .with_context(|| format!("无法监测{label}录屏会话"))?;
         let pipeline = WindowRecordingPipeline::from_remote(
             source.node_id,
             source
@@ -99,14 +155,23 @@ async fn run_window_recording_async(output_path: PathBuf, with_audio: bool) -> R
     result
 }
 
-struct WindowCaptureSource {
+struct PortalCaptureSource {
     session: Session<Screencast>,
     node_id: u32,
     remote: OwnedFd,
 }
 
-impl WindowCaptureSource {
-    async fn request() -> Result<Self> {
+impl PortalCaptureSource {
+    async fn request(source_type: PortalSourceType) -> Result<Self> {
+        let ashpd_source_type = match source_type {
+            PortalSourceType::Window => SourceType::Window,
+            PortalSourceType::Monitor => SourceType::Monitor,
+        };
+        let label = match source_type {
+            PortalSourceType::Window => "窗口",
+            PortalSourceType::Monitor => "全屏",
+        };
+
         let portal = Screencast::new()
             .await
             .context("无法连接 ScreenCast portal")?;
@@ -114,11 +179,9 @@ impl WindowCaptureSource {
             .available_source_types()
             .await
             .context("无法查询录屏来源类型")?
-            .contains(SourceType::Window)
+            .contains(ashpd_source_type)
         {
-            bail!(
-                "当前 ScreenCast portal 不支持窗口捕获；niri 请安装并启用 xdg-desktop-portal-gnome"
-            );
+            bail!("当前 ScreenCast portal 不支持{label}捕获");
         }
         let cursor_modes = portal
             .available_cursor_modes()
@@ -134,36 +197,36 @@ impl WindowCaptureSource {
         let session = portal
             .create_session(Default::default())
             .await
-            .context("无法创建窗口录屏会话")?;
+            .with_context(|| format!("无法创建{label}录屏会话"))?;
         portal
             .select_sources(
                 &session,
                 SelectSourcesOptions::default()
                     .set_cursor_mode(cursor_mode)
-                    .set_sources(ashpd::enumflags2::BitFlags::from_flag(SourceType::Window))
+                    .set_sources(ashpd::enumflags2::BitFlags::from_flag(ashpd_source_type))
                     .set_multiple(false)
                     .set_persist_mode(PersistMode::DoNot),
             )
             .await
-            .context("无法请求窗口录屏来源")?
+            .with_context(|| format!("无法请求{label}录屏来源"))?
             .response()
-            .context("窗口录屏来源请求被拒绝")?;
+            .with_context(|| format!("{label}录屏来源请求被拒绝"))?;
         let streams = portal
             .start(&session, None, Default::default())
             .await
-            .context("无法启动窗口录屏来源")?
+            .with_context(|| format!("无法启动{label}录屏来源"))?
             .response()
-            .context("窗口录屏来源选择已取消或失败")?;
+            .with_context(|| format!("{label}录屏来源选择已取消或失败"))?;
         let stream = streams
             .streams()
             .first()
             .filter(|_| streams.streams().len() == 1)
-            .ok_or_else(|| anyhow!("窗口录屏必须返回一个视频流"))?;
+            .ok_or_else(|| anyhow!("{label}录屏必须返回一个视频流"))?;
         if stream
             .source_type()
-            .is_some_and(|kind| kind != SourceType::Window)
+            .is_some_and(|kind| kind != ashpd_source_type)
         {
-            bail!("ScreenCast 返回的来源不是窗口");
+            bail!("ScreenCast 返回的来源类型不匹配");
         }
         let remote = portal
             .open_pipe_wire_remote(&session, Default::default())

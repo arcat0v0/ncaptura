@@ -96,8 +96,8 @@ pub fn start_recording_detached(
     };
 
     let pid = child.id();
-    if target == CaptureTarget::Window
-        && let Err(error) = wait_until_window_capture_ready(&mut child)
+    if is_portal_recording(target)
+        && let Err(error) = wait_until_portal_capture_ready(&mut child, target)
     {
         let _ = process::interrupt(pid);
         let _ = child.wait();
@@ -107,31 +107,60 @@ pub fn start_recording_detached(
     Ok(CliRecordingState { pid, output_path })
 }
 
-fn wait_until_window_capture_ready(child: &mut Child) -> Result<()> {
-    let mut reader = BufReader::new(child.stdout.take().context("窗口录屏进程没有状态输出")?);
-    let mut stderr_reader =
-        BufReader::new(child.stderr.take().context("窗口录屏进程没有错误输出")?);
+fn is_portal_recording(target: CaptureTarget) -> bool {
+    match target {
+        CaptureTarget::Window => true,
+        CaptureTarget::Fullscreen => {
+            matches!(
+                compositor::detect(),
+                compositor::Compositor::Kde | compositor::Compositor::Gnome
+            )
+        }
+        CaptureTarget::Region => false,
+    }
+}
+
+fn wait_until_portal_capture_ready(child: &mut Child, target: CaptureTarget) -> Result<()> {
+    let target_name = match target {
+        CaptureTarget::Window => "窗口",
+        CaptureTarget::Fullscreen => "全屏",
+        CaptureTarget::Region => "区域",
+    };
+    let mut reader = BufReader::new(
+        child
+            .stdout
+            .take()
+            .with_context(|| format!("{target_name}录屏进程没有状态输出"))?,
+    );
+    let mut stderr_reader = BufReader::new(
+        child
+            .stderr
+            .take()
+            .with_context(|| format!("{target_name}录屏进程没有错误输出"))?,
+    );
     let deadline = Instant::now() + Duration::from_secs(120);
     loop {
         if Instant::now() >= deadline {
-            bail!("等待窗口选择超时");
+            bail!("等待{target_name}选择超时");
         }
         let mut line = String::new();
         let bytes = reader
             .read_line(&mut line)
-            .context("读取窗口录屏状态失败")?;
+            .with_context(|| format!("读取{target_name}录屏状态失败"))?;
         if bytes == 0 {
-            let status = child.wait().context("等待窗口录屏进程失败")?;
+            let status = child
+                .wait()
+                .with_context(|| format!("等待{target_name}录屏进程失败"))?;
             let mut stderr = String::new();
             let _ = std::io::BufRead::read_line(&mut stderr_reader, &mut stderr);
             let stderr = stderr.trim();
             if stderr.is_empty() {
-                bail!("窗口录屏在开始前退出: {status}");
+                bail!("{target_name}录屏在开始前退出: {status}");
             }
-            bail!("窗口录屏在开始前退出: {status}: {stderr}");
+            bail!("{target_name}录屏在开始前退出: {status}: {stderr}");
         }
         match line.trim() {
-            "" => bail!("窗口录屏在开始前退出"),
+            "" => bail!("{target_name}录屏在开始前退出"),
             "READY" => return Ok(()),
             _ => continue,
         }
@@ -148,7 +177,7 @@ pub fn stop_recording_detached() -> Result<PathBuf> {
 
     let metadata = std::fs::metadata(&output_path).context("读取录屏文件失败")?;
     if metadata.len() == 0 {
-        bail!("录屏文件为空，窗口内容可能未成功捕获");
+        bail!("录屏文件为空，内容可能未成功捕获");
     }
     clear_cli_recording_state();
     Ok(output_path)

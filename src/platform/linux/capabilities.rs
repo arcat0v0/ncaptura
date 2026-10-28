@@ -24,8 +24,8 @@ pub fn supported(kind: Compositor, capability: Capability) -> bool {
     use Compositor as S;
 
     match capability {
-        C::RecordWindow => true,
-        C::RecordRegion | C::RecordFullscreen | C::ListWindows => matches!(kind, S::Wlroots),
+        C::RecordFullscreen | C::RecordWindow => true,
+        C::RecordRegion | C::ListWindows => matches!(kind, S::Wlroots),
     }
 }
 
@@ -49,11 +49,18 @@ mod tests {
     }
 
     #[test]
-    fn kde_and_gnome_support_portal_recording_only() {
+    fn kde_and_gnome_support_fullscreen_and_window_recording() {
         for kind in [Compositor::Kde, Compositor::Gnome] {
             for capability in ALL {
-                let expected = matches!(capability, Capability::RecordWindow);
-                assert_eq!(supported(kind, capability), expected, "{kind:?} {capability:?}");
+                let expected = matches!(
+                    capability,
+                    Capability::RecordFullscreen | Capability::RecordWindow
+                );
+                assert_eq!(
+                    supported(kind, capability),
+                    expected,
+                    "{kind:?} {capability:?}"
+                );
             }
         }
     }
