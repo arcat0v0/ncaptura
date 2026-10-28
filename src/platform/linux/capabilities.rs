@@ -2,9 +2,6 @@ use super::compositor::Compositor;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Capability {
-    ScreenshotRegion,
-    ScreenshotFullscreen,
-    ScreenshotWindow,
     RecordRegion,
     RecordFullscreen,
     RecordWindow,
@@ -14,9 +11,6 @@ pub enum Capability {
 impl Capability {
     pub fn label(self) -> &'static str {
         match self {
-            Capability::ScreenshotRegion => "区域截图",
-            Capability::ScreenshotFullscreen => "全屏截图",
-            Capability::ScreenshotWindow => "窗口截图",
             Capability::RecordRegion => "区域录屏",
             Capability::RecordFullscreen => "全屏录屏",
             Capability::RecordWindow => "窗口录屏",
@@ -30,9 +24,7 @@ pub fn supported(kind: Compositor, capability: Capability) -> bool {
     use Compositor as S;
 
     match capability {
-        C::ScreenshotRegion | C::ScreenshotFullscreen | C::ScreenshotWindow | C::RecordWindow => {
-            true
-        }
+        C::RecordWindow => true,
         C::RecordRegion | C::RecordFullscreen | C::ListWindows => matches!(kind, S::Wlroots),
     }
 }
@@ -42,10 +34,7 @@ mod tests {
     use super::{Capability, supported};
     use crate::platform::compositor::Compositor;
 
-    const ALL: [Capability; 7] = [
-        Capability::ScreenshotRegion,
-        Capability::ScreenshotFullscreen,
-        Capability::ScreenshotWindow,
+    const ALL: [Capability; 4] = [
         Capability::RecordRegion,
         Capability::RecordFullscreen,
         Capability::RecordWindow,
@@ -60,20 +49,11 @@ mod tests {
     }
 
     #[test]
-    fn kde_and_gnome_share_the_same_matrix() {
+    fn kde_and_gnome_support_portal_recording_only() {
         for kind in [Compositor::Kde, Compositor::Gnome] {
             for capability in ALL {
-                let expected = !matches!(
-                    capability,
-                    Capability::RecordRegion
-                        | Capability::RecordFullscreen
-                        | Capability::ListWindows
-                );
-                assert_eq!(
-                    supported(kind, capability),
-                    expected,
-                    "{kind:?} {capability:?}"
-                );
+                let expected = matches!(capability, Capability::RecordWindow);
+                assert_eq!(supported(kind, capability), expected, "{kind:?} {capability:?}");
             }
         }
     }
